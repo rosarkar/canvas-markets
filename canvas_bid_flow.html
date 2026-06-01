@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canvas AI — Advertiser Bid Flow</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9f8f7;color:#1c1917;padding:2rem;max-width:860px;margin:0 auto}
+h1{font-size:17px;font-weight:600;color:#1c1917;margin-bottom:2px}
+.sub{font-size:11px;color:#78716c;margin-bottom:1.5rem}
+.wrap{background:#f5f4f2;border-radius:12px;padding:1.5rem}
+.section-label{font-size:11px;font-weight:600;color:#78716c;text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+.chat{background:#fff;border:0.5px solid #e4e0da;border-radius:10px;padding:12px;margin-bottom:1rem}
+.msg{display:flex;gap:8px;margin-bottom:10px}
+.msg:last-child{margin-bottom:0}
+.msg.user{flex-direction:row-reverse}
+.avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.av-bot{background:#ede9fe;color:#6d28d9}
+.av-user{background:#fef3c7;color:#92400e}
+.bubble{border-radius:2px 12px 12px 12px;padding:8px 12px;max-width:80%}
+.bubble.bot{background:#f5f4f2}
+.bubble.user{background:#ede9fe;border-radius:12px 2px 12px 12px}
+.bubble p{margin:0;font-size:13px;color:#1c1917;line-height:1.5}
+.bubble .muted{color:#78716c}
+.group-list{margin:8px 0 4px}
+.group-row{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border:0.5px solid #e4e0da;border-radius:6px;margin-bottom:5px;background:#fff}
+.group-row:last-child{margin-bottom:0}
+.group-name{font-size:12px;font-weight:600;color:#1c1917;margin:0 0 1px}
+.group-meta{font-size:11px;color:#78716c;margin:0}
+.bid-tag{font-size:11px;font-weight:600;padding:3px 7px;border-radius:4px;white-space:nowrap}
+.bid-active{background:#fef3c7;color:#92400e}
+.bid-empty{background:#f0fdf4;color:#166534}
+.confirm-box{background:#fff;border:0.5px solid #e4e0da;border-radius:8px;padding:10px 12px;margin:8px 0 4px}
+.confirm-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:0.5px solid #f0ece6}
+.confirm-row:last-child{border-bottom:none;font-weight:600}
+.confirm-label{color:#78716c}
+.confirm-val{color:#1c1917}
+.btn-row{display:flex;gap:6px;margin-top:6px}
+.btn{background:#1c1917;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;color:#fff;display:inline-block}
+.btn-ghost{background:#fff;border:0.5px solid #e4e0da;border-radius:6px;padding:6px 12px;font-size:12px;color:#78716c;display:inline-block}
+
+.divider{text-align:center;font-size:11px;color:#a09890;margin:1.5rem 0 1rem;display:flex;align-items:center;gap:8px}
+.divider::before,.divider::after{content:'';flex:1;height:0.5px;background:#e4e0da}
+
+.notif{background:#fff;border:0.5px solid #fcd34d;border-radius:10px;padding:12px;margin-bottom:1rem}
+.notif-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.notif-icon{width:28px;height:28px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.notif-title{font-size:13px;font-weight:600;color:#1c1917;margin:0}
+.notif-sub{font-size:11px;color:#78716c;margin:0}
+.notif .bubble{background:#fefce8;border-radius:2px 12px 12px 12px}
+.notif .bubble p{color:#1c1917}
+
+.outcome{background:#fff;border:0.5px solid #e4e0da;border-radius:10px;padding:10px 12px}
+.outcome-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:0.5px solid #f0ece6}
+.outcome-row:last-child{border-bottom:none}
+.outcome-row i{font-size:15px;color:#78716c}
+.outcome-title{font-size:12px;font-weight:600;color:#1c1917;margin:0}
+.outcome-sub{font-size:11px;color:#78716c;margin:0}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+.card{background:#fff;border:0.5px solid #e4e0da;border-radius:10px;padding:.75rem 1rem}
+.label{font-size:11px;font-weight:600;color:#78716c;margin:0 0 3px;text-transform:uppercase;letter-spacing:.06em}
+.card-title{font-size:14px;font-weight:600;color:#1c1917;margin:0}
+.card-sub{font-size:12px;color:#78716c;margin:3px 0 0}
+</style>
+</head>
+<body>
+<h1>Canvas AI</h1>
+<p class="sub">Advertiser flow — competitive bidding</p>
+
+<div class="wrap">
+
+  <div class="grid2">
+    <div class="card">
+      <p class="label">Scenario</p>
+      <p class="card-title">3 advertisers, 1 group</p>
+      <p class="card-sub">Crypto Traders HQ · 4,200 members</p>
+    </div>
+    <div class="card">
+      <p class="label">Mechanic</p>
+      <p class="card-title">Bid per verification</p>
+      <p class="card-sub">Highest bidder's task is served · winner-takes-all per join</p>
+    </div>
+  </div>
+
+  <!-- BUY FLOW CONVERSATION -->
+  <p class="section-label">Buy flow — Canvas AI conversation</p>
+  <div class="chat">
+
+    <div class="msg user">
+      <div class="avatar av-user">AD</div>
+      <div class="bubble user"><p>I want to run a verification campaign targeting DeFi traders, 2–5k members</p></div>
+    </div>
+
+    <div class="msg">
+      <div class="avatar av-bot">CV</div>
+      <div class="bubble bot">
+        <p style="margin-bottom:8px">Found 3 matching groups. Current top bids shown — you need to bid above the leader to win each join.</p>
+        <div class="group-list">
+          <div class="group-row">
+            <div><p class="group-name">Crypto Traders HQ</p><p class="group-meta">4,200 members · DeFi · trading</p></div>
+            <span class="bid-tag bid-active">Top bid $0.28</span>
+          </div>
+          <div class="group-row">
+            <div><p class="group-name">Base DeFi Traders</p><p class="group-meta">2,800 members · lending · yield</p></div>
+            <span class="bid-tag bid-active">Top bid $0.22</span>
+          </div>
+          <div class="group-row">
+            <div><p class="group-name">ETH Yield Farmers</p><p class="group-meta">1,900 members · yield · DeFi</p></div>
+            <span class="bid-tag bid-empty">No bids · floor $0.10</span>
+          </div>
+        </div>
+        <p style="margin-top:8px" class="muted">Which group and how many verifications do you want?</p>
+      </div>
+    </div>
+
+    <div class="msg user">
+      <div class="avatar av-user">AD</div>
+      <div class="bubble user"><p>Crypto Traders HQ, 100 verifications</p></div>
+    </div>
+
+    <div class="msg">
+      <div class="avatar av-bot">CV</div>
+      <div class="bubble bot">
+        <p style="margin-bottom:6px"><strong>Crypto Traders HQ</strong> — current top bid is <strong>$0.28/verification</strong> (DeFi AI Lab, 63 remaining in their budget).</p>
+        <p class="muted">Bid above $0.28 to take the top slot. Your task will be served to every new join until you're outbid or your budget runs out.</p>
+        <p style="margin-top:6px">What's your bid per verification?</p>
+      </div>
+    </div>
+
+    <div class="msg user">
+      <div class="avatar av-user">AD</div>
+      <div class="bubble user"><p>$0.35</p></div>
+    </div>
+
+    <div class="msg">
+      <div class="avatar av-bot">CV</div>
+      <div class="bubble bot">
+        <p style="margin-bottom:8px">You're the new top bidder. Here's the summary:</p>
+        <div class="confirm-box">
+          <div class="confirm-row"><span class="confirm-label">Group</span><span class="confirm-val">Crypto Traders HQ</span></div>
+          <div class="confirm-row"><span class="confirm-label">Bid per verification</span><span class="confirm-val">$0.35</span></div>
+          <div class="confirm-row"><span class="confirm-label">Quantity</span><span class="confirm-val">100 verifications</span></div>
+          <div class="confirm-row"><span class="confirm-label">Total USDC to lock</span><span class="confirm-val">$35.00</span></div>
+          <div class="confirm-row"><span class="confirm-label">Previous top bid</span><span class="confirm-val">$0.28 (DeFi AI Lab)</span></div>
+        </div>
+        <p class="muted" style="margin-bottom:8px">I'll notify you if you're outbid. Unused USDC is refunded when your budget expires.</p>
+        <div class="btn-row">
+          <span class="btn">Confirm — lock $35 USDC</span>
+          <span class="btn-ghost">Change bid</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="msg user">
+      <div class="avatar av-user">AD</div>
+      <div class="bubble user"><p>Confirm</p></div>
+    </div>
+
+    <div class="msg">
+      <div class="avatar av-bot">CV</div>
+      <div class="bubble bot">
+        <p>✓ Done. $35 USDC locked in escrow. You're the top bidder on Crypto Traders HQ at $0.35/verification. I'll message you here as completions come in — and alert you immediately if you're outbid.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- OUTBID NOTIFICATION -->
+  <div class="divider">Later — a third advertiser outbids</div>
+
+  <p class="section-label">Outbid notification — Canvas AI messages the displaced leader</p>
+  <div class="notif">
+    <div class="notif-header">
+      <div class="notif-icon">⚡</div>
+      <div><p class="notif-title">Canvas AI · outbid alert</p><p class="notif-sub">DM to previous top bidder</p></div>
+    </div>
+    <div class="msg" style="margin-bottom:8px">
+      <div class="avatar av-bot">CV</div>
+      <div class="bubble notif">
+        <p style="margin-bottom:6px">You've been outbid on <strong>Crypto Traders HQ</strong>.</p>
+        <p class="muted" style="margin-bottom:6px">New top bid: <strong>$0.42</strong> (Aave) · Your bid: $0.35 · Your task is no longer being served.</p>
+        <p>Want to rebid above $0.42 to reclaim the top slot?</p>
+      </div>
+    </div>
+    <div class="msg user" style="margin-bottom:8px">
+      <div class="avatar av-user">AD</div>
+      <div class="bubble user"><p>$0.45</p></div>
+    </div>
+    <div class="msg">
+      <div class="avatar av-bot">CV</div>
+      <div class="bubble bot">
+        <p>✓ You're back on top at $0.45/verification. Remaining budget updated. Your task is live again.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHAT'S HAPPENING IN POSTGRES -->
+  <p class="section-label" style="margin-top:1rem">What Postgres holds per group</p>
+  <div class="outcome">
+    <div class="outcome-row">
+      <i class="ti ti-trophy"></i>
+      <div><p class="outcome-title">Top bidder slot</p><p class="outcome-sub">Advertiser ID + bid price · updated on every new bid · bot reads this on each join</p></div>
+    </div>
+    <div class="outcome-row">
+      <i class="ti ti-list-numbers"></i>
+      <div><p class="outcome-title">Full bid ladder</p><p class="outcome-sub">All active bids ranked by price · Canvas AI reads this to show competitors the market</p></div>
+    </div>
+    <div class="outcome-row">
+      <i class="ti ti-wallet"></i>
+      <div><p class="outcome-title">Per-advertiser escrow balance</p><p class="outcome-sub">Remaining budget draws down at the winning bid price per completed verification</p></div>
+    </div>
+    <div class="outcome-row">
+      <i class="ti ti-bell"></i>
+      <div><p class="outcome-title">Outbid notification queue</p><p class="outcome-sub">On every new top bid, previous leader is queued for a Canvas AI Telegram DM</p></div>
+    </div>
+  </div>
+
+</div>
+
+<p style="font-size:10px;color:#a09890;margin-top:1rem;text-align:center">Canvas AI · v0.1 · confidential</p>
+</body>
+</html>

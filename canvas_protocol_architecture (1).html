@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canvas Protocol — System Architecture</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9f8f7;color:#1c1917;padding:2rem;max-width:900px;margin:0 auto}
+h1{font-size:17px;font-weight:600;color:#1c1917;margin-bottom:2px}
+.sub{font-size:11px;color:#78716c;margin-bottom:1.5rem}
+.cc{background:#fff;border:0.5px solid #e4e0da;border-radius:6px;padding:8px 10px;line-height:1.35}
+.ct{font-size:12px;font-weight:600;color:#1c1917;margin:0 0 2px}
+.cs{font-size:11px;color:#78716c;margin:0;line-height:1.4}
+.cbox{border:0.5px dashed #ccc8c0;border-radius:10px;padding:10px 12px;background:#fdfcfb}
+.cbl{font-size:10px;font-weight:600;color:#78716c;text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+.cg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.cg2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.car{text-align:center;font-size:10px;color:#a09890;line-height:1.6;padding:1px 0}
+.cstep{font-size:11px;color:#1c1917;padding:6px 0;border-top:0.5px solid #e4e0da;line-height:1.5}
+.cstep:last-child{border-bottom:none}
+.sn{font-weight:600;color:#a09890;margin-right:5px}
+.wrap{padding:0.25rem 0}
+</style>
+</head>
+<body>
+<h1>Canvas Protocol</h1>
+<p class="sub">System architecture · v0.2</p>
+
+<div class="wrap">
+  <div class="cg3" style="margin-bottom:3px">
+    <div class="cc" style="border-left:3px solid #e05e35"><p class="ct">Advertiser / agent</p><p class="cs">buys verifications in bulk for target groups</p></div>
+    <div class="cc" style="border-left:3px solid #78716c"><p class="ct">Human</p><p class="cs">wants to join a registered Telegram group</p></div>
+    <div class="cc" style="border-left:3px solid #0d9488"><p class="ct">Group owner</p><p class="cs">registers group and payout wallet</p></div>
+
+  </div>
+
+  <div class="cg3" style="margin:2px 0">
+    <div class="car">↓ DMs Canvas AI</div>
+    <div class="car">↓ attempts to join group</div>
+    <div class="car">↓ DMs Canvas AI</div>
+  </div>
+
+  <div class="cg3" style="margin-bottom:3px">
+    <div class="cc" style="border-left:3px solid #7c3aed"><p class="ct">Canvas AI · buy flow</p><p class="cs">natural language · shows live top bid · bid to win priority · funds escrow via Bankr API</p></div>
+    <div class="cc" style="border-left:3px solid #0d9488"><p class="ct">Telegram Bot API</p><p class="cs">webhook · bot token via @BotFather · bot must be group admin</p></div>
+    <div class="cc" style="border-left:3px solid #7c3aed"><p class="ct">Canvas AI · register</p><p class="cs">natural language · saves group link + wallet to Postgres registry</p></div>
+  </div>
+
+  <div class="cg3" style="margin:2px 0">
+    <div class="car">↓ Bankr API · USDC locked in escrow</div>
+    <div class="car">↓ join request intercepted by bot</div>
+    <div class="car">↓ group written to Postgres registry</div>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:3px">
+    <div class="cbox" style="flex:1">
+      <p class="cbl">Canvas AI · Railway · always on</p>
+      <div class="cg2" style="margin-bottom:3px">
+        <div class="cc" style="border-left:3px solid #0d9488"><p class="ct">Bot handler</p><p class="cs">intercepts join · selects highest active bid · mutes user · sends matched captcha · receives response · admits or re-prompts</p></div>
+        <div class="cc" style="border-left:3px solid #78716c"><p class="ct">Postgres</p><p class="cs">group registry · verification queue · advertiser budgets · bid prices · cooldown timers</p></div>
+      </div>
+      <div style="font-size:10px;color:#a09890;text-align:center;margin:3px 0 4px;line-height:1.5">read / write ←→</div>
+      <div class="cg2" style="margin:2px 0">
+        <div class="car">↓ sends response for scoring</div>
+        <div class="car">↓ fires step ① then step ②</div>
+      </div>
+      <div class="cg2">
+        <div class="cc" style="border-left:3px solid #d97706"><p class="ct">Kimi inference</p><p class="cs">scores response quality · genuine vs random · passes or fails threshold · result triggers step ②</p></div>
+        <div class="cc" style="border-left:3px solid #7c3aed"><p class="ct">Contract calls</p><p class="cs">① logs completion onchain after response received · ② releases payout after Kimi passes</p></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:130px">
+      <div>
+        <div class="car" style="margin-bottom:4px">advertiser on-ramp</div>
+        <div class="cc" style="border-left:3px solid #e05e35"><p class="ct">Bankr API</p><p class="cs">wallet UX · payment confirmation · USDC deposit into escrow</p></div>
+      </div>
+      <div>
+        <div class="car" style="margin-bottom:4px">settlement layer</div>
+        <div class="cc" style="border-left:3px solid #7c3aed"><p class="ct">Base · direct RPC</p><p class="cs">step ① log · step ② payout release · escrow balance reads</p></div>
+      </div>
+      <div style="margin-top:auto">
+        <div class="car" style="margin-bottom:4px">calls → scores back</div>
+        <div class="cc" style="border-left:3px solid #d97706"><p class="ct">Kimi API</p><p class="cs">external · pay per call · cheap at POC scale</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;font-size:10px;color:#a09890;margin:4px 0;line-height:1.7">
+    ↓ &nbsp;① step 1 · completion logged onchain &nbsp;&nbsp;&nbsp; ↓ &nbsp;② step 2 · USDC released to group owner wallet
+  </div>
+
+  <div class="cbox" style="margin-bottom:16px">
+    <p class="cbl">Base · onchain · smart contract</p>
+    <div class="cc" style="border-left:3px solid #7c3aed">
+      <p class="ct">Escrow contract</p>
+      <p class="cs">USDC deposited via Bankr API (advertiser on-ramp) · Canvas AI calls Base directly for all settlement: step ① logs each completion attempt · step ② releases per-verification payout to group owner wallet on valid Kimi score · budget draws down at winning bid price · refunds unused balance · non-custodial throughout</p>
+    </div>
+  </div>
+
+  <div style="border-top:0.5px solid #e4e0da;padding-top:12px">
+    <p style="font-size:10px;font-weight:600;color:#78716c;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px">Flow order — setup then per-verification</p>
+    <div class="cg2" style="gap:0 20px">
+      <div class="cstep"><span class="sn">①</span>Group owner DMs Canvas AI → shares group link + payout wallet → written to Postgres group registry → bot added as admin to Telegram group</div>
+      <div class="cstep"><span class="sn">②</span>Advertiser DMs Canvas AI → selects group by topic → Canvas AI shows current top bid for that group → advertiser sets bid per verification above the current top → Canvas AI calls Bankr API → USDC locked at bid price × quantity in escrow on Base · if a new advertiser outbids them later Canvas AI notifies the displaced leader via Telegram and prompts them to rebid</div>
+      <div class="cstep"><span class="sn">③</span>Human attempts to join group → Telegram Bot API fires webhook to Canvas AI → bot queries Postgres for highest active bid on that group → selects that advertiser's task</div>
+      <div class="cstep"><span class="sn">④</span>Bot mutes user in group → sends captcha task in private DM · task is matched to group topic and advertiser category</div>
+      <div class="cstep"><span class="sn">⑤</span>Human completes task and replies via DM → bot receives response through Telegram webhook → response stored in Postgres verification queue</div>
+      <div class="cstep"><span class="sn">⑥</span>Canvas AI calls Base directly (RPC) → step ① contract call logs completion attempt onchain · advertiser can see attempt count at any time · budget not yet released · no Bankr involvement</div>
+      <div class="cstep"><span class="sn">⑦</span>Bot sends response to Kimi inference → Kimi API scores it as genuine or random · if score passes threshold step 2 fires · if not human is re-prompted or denied</div>
+      <div class="cstep"><span class="sn">⑧</span>Canvas AI calls Base directly (RPC) → step ② contract call releases USDC from escrow to group owner wallet at the winning bid price · budget draws down · payout is immediate and non-custodial · no Bankr involvement</div>
+      <div class="cstep"><span class="sn">⑨</span>Bot unmutes human and sends group invite link via DM · human is now a member · Telegram API handles the group admission</div>
+      <div class="cstep" style="border-bottom:none"><span class="sn">⑩</span>Advertiser notified via Canvas AI · completion data delivered · response included · 99 verifications remaining in budget</div>
+    </div>
+  </div>
+
+  <p style="font-size:10px;color:#a09890;margin-top:16px;text-align:center">Canvas Protocol · v0.1 · confidential</p>
+</div>
+</body>
+</html>

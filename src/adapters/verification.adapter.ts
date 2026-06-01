@@ -1,0 +1,151 @@
+import { randomUUID } from "node:crypto";
+
+import { db } from "@/db.js";
+import { config } from "@/config/index.js";
+import {
+  COOLDOWN_STATES,
+  VerificationState,
+  type VerificationState as State,
+} from "@/services/verification-states.js";
+
+export interface VerificationRow {
+  verificationId: string;
+  tgUserId: bigint;
+  groupId: number;
+  advertiserId: number | null;
+  state: State;
+  lockedBidPrice: bigint | null;
+  kimiScore: number | null;
+  responseText: string | null;
+  attemptCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date | null;
+}
+
+function mapRow(r: Record<string, unknown>): VerificationRow {
+  return {
+    verificationId: r.verification_id as string,
+    tgUserId: BigInt(r.tg_user_id as string | bigint),
+    groupId: r.group_id as number,
+    advertiserId: r.advertiser_id as number | null,
+    state: r.state as State,
+    lockedBidPrice:
+      r.locked_bid_price != null ? BigInt(r.locked_bid_price as string | bigint) : null,
+    kimiScore: r.kimi_score as number | null,
+    responseText: r.response_text as string | null,
+    attemptCount: r.attempt_count as number,
+    createdAt: r.created_at as Date,
+    updatedAt: r.updated_at as Date,
+    expiresAt: r.expires_at as Date | null,
+  };
+}
+
+export async function isUserInCooldown(tgUserId: bigint, groupId: number): Promise<boolean> {
+  const res = await db.query<{ cooldown_until: Date }>(
+    `SELECT cooldown_until FROM user_cooldowns
+     WHERE tg_user_id = $1 AND group_id = $2 AND cooldown_until > NOW()`,
+    [tgUserId.toString(), groupId],
+  );
+  return res.rows.length > 0;
+}
+
+export async function setCooldown(tgUserId: bigint, groupId: number): Promise<void> {
+  const until = new Date(Date.now() + config.constants.COOLDOWN_MS);
+  await db.query(
+    `INSERT INTO user_cooldowns (tg_user_id, group_id, cooldown_until)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (tg_user_id, group_id) DO UPDATE SET cooldown_until = EXCLUDED.cooldown_until`,
+    [tgUserId.toString(), groupId, until],
+  );
+}
+
+export async function createVerification(input: {
+  tgUserId: bigint;
+  groupId: number;
+  advertiserId?: number | null;
+}): Promise<VerificationRow> {
+  const verificationId = randomUUID();
+  const expiresAt = new Date(Date.now() + config.constants.VERIFICATION_TTL_MS);
+  const res = await db.query(
+    `INSERT INTO verifications (verification_id, tg_user_id, group_id, advertiser_id, state, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [
+      verificationId,
+      input.tgUserId.toString(),
+      input.groupId,
+      input.advertiserId ?? null,
+      VerificationState.PENDING,
+      expiresAt,
+    ],
+  );
+  return mapRow(res.rows[0]!);
+}
+
+export async function getVerificationByToken(token: string): Promise<VerificationRow | null> {
+  const res = await db.query(`SELECT * FROM verifications WHERE verification_id = $1`, [token]);
+  if (!res.rows[0]) return null;
+  return mapRow(res.rows[0]);
+}
+
+export async function transitionState(
+  verificationId: string,
+  newState: State,
+  extra?: {
+    lockedBidPrice?: bigint;
+    responseText?: string;
+    kimiScore?: number;
+  },
+): Promise<void> {
+  await db.query(
+    `UPDATE verifications
+     SET state = $2,
+         locked_bid_price = COALESCE($3, locked_bid_price),
+         response_text = COALESCE($4, response_text),
+         kimi_score = COALESCE($5, kimi_score),
+         updated_at = NOW()
+     WHERE verification_id = $1`,
+    [
+      verificationId,
+      newState,
+      extra?.lockedBidPrice?.toString() ?? null,
+      extra?.responseText ?? null,
+      extra?.kimiScore ?? null,
+    ],
+  );
+
+  const row = await getVerificationByToken(verificationId);
+  if (row && COOLDOWN_STATES.includes(newState)) {
+    await setCooldown(row.tgUserId, row.groupId);
+  }
+}
+
+export async function getActiveVerificationForUser(
+  tgUserId: bigint,
+  groupId: number,
+): Promise<VerificationRow | null> {
+  const res = await db.query(
+    `SELECT * FROM verifications
+     WHERE tg_user_id = $1 AND group_id = $2
+       AND state NOT IN ('PASSED', 'FAILED', 'TIMED_OUT')
+     ORDER BY created_at DESC LIMIT 1`,
+    [tgUserId.toString(), groupId],
+  );
+  if (!res.rows[0]) return null;
+  return mapRow(res.rows[0]);
+}
+
+export async function expireStaleVerifications(): Promise<number> {
+  const res = await db.query<{ verification_id: string; tg_user_id: string; group_id: number }>(
+    `UPDATE verifications
+     SET state = 'TIMED_OUT', updated_at = NOW()
+     WHERE state IN ('DEEP_LINK_SENT', 'TASK_SENT')
+       AND expires_at < NOW()
+     RETURNING verification_id, tg_user_id, group_id`,
+  );
+  for (const row of res.rows) {
+    await setCooldown(BigInt(row.tg_user_id), row.group_id);
+  }
+  return res.rowCount ?? 0;
+}

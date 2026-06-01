@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canvas Protocol — RLHF Verification Example</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9f8f7;color:#1c1917;padding:2rem;max-width:860px;margin:0 auto}
+h1{font-size:17px;font-weight:600;color:#1c1917;margin-bottom:2px}
+.sub{font-size:11px;color:#78716c;margin-bottom:1.5rem}
+.wrap{background:#f5f4f2;border-radius:12px;padding:1.5rem}
+.card{background:#fff;border:0.5px solid #e4e0da;border-radius:10px;padding:1rem}
+.label{font-size:11px;font-weight:600;color:#78716c;margin:0 0 4px;text-transform:uppercase;letter-spacing:.06em}
+.card-title{font-size:14px;font-weight:600;color:#1c1917;margin:0}
+.card-sub{font-size:12px;color:#78716c;margin:4px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.step-label{font-size:11px;font-weight:600;color:#78716c;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em}
+.msg-box{background:#fff;border:0.5px solid #e4e0da;border-radius:10px;padding:12px;font-size:13px}
+.avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0}
+.av-blue{background:#eff6ff;color:#2563eb}
+.av-green{background:#f0fdf4;color:#16a34a}
+.msg-header{display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:0.5px solid #e4e0da;margin-bottom:10px}
+.msg-name{margin:0;font-weight:600;font-size:13px;color:#1c1917}
+.msg-time{margin:0;font-size:11px;color:#78716c}
+.notice{background:#f5f4f2;border-radius:6px;padding:8px 10px;font-size:12px;color:#78716c}
+.option{border:0.5px solid #e4e0da;border-radius:6px;padding:8px 10px;margin-bottom:6px}
+.opt-label{margin:0 0 2px;font-size:11px;font-weight:600;color:#78716c}
+.opt-text{margin:0;font-size:12px;color:#1c1917}
+.bubble-right{display:flex;justify-content:flex-end;margin-bottom:8px}
+.bubble-in{background:#eff6ff;border-radius:12px 12px 2px 12px;padding:8px 12px}
+.bubble-in p{margin:0;font-size:13px;color:#2563eb;font-weight:600}
+.bubble-out-wrap{display:flex;gap:8px}
+.bubble-out{background:#f5f4f2;border-radius:2px 12px 12px 12px;padding:8px 12px;flex:1}
+.bubble-out p{margin:0;font-size:13px;color:#1c1917}
+.onchain-row{display:flex;align-items:center;gap:10px;padding:8px;background:#f5f4f2;border-radius:6px;margin-bottom:6px}
+.onchain-row:last-child{margin-bottom:0}
+.onchain-row i{font-size:16px;color:#78716c}
+.onchain-title{margin:0;font-size:12px;font-weight:600;color:#1c1917}
+.onchain-sub{margin:0;font-size:11px;color:#78716c}
+.footer{margin-top:1rem;padding:10px 12px;background:#fff;border:0.5px solid #e4e0da;border-radius:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.footer span{font-size:12px;color:#78716c}
+.footer i{font-size:13px;vertical-align:-2px;margin-right:4px}
+</style>
+</head>
+<body>
+<h1>Canvas Protocol</h1>
+<p class="sub">Verification example — RLHF training data</p>
+
+<div class="wrap">
+  <div class="grid2" style="margin-bottom:1rem">
+    <div class="card">
+      <p class="label">Advertiser</p>
+      <p class="card-title">DeFi AI Lab</p>
+      <p class="card-sub">collecting RLHF training data</p>
+    </div>
+    <div class="card">
+      <p class="label">Group</p>
+      <p class="card-title">Crypto Traders HQ</p>
+      <p class="card-sub">4,200 members · DeFi · trading</p>
+    </div>
+  </div>
+
+  <div class="grid2" style="align-items:start">
+    <div>
+      <p class="step-label">Step 1 — group join attempt</p>
+      <div class="msg-box">
+        <div class="msg-header">
+          <div class="avatar av-blue">CT</div>
+          <div>
+            <p class="msg-name">Crypto Traders HQ</p>
+            <p class="msg-time">@canvasbot · now</p>
+          </div>
+        </div>
+        <p style="margin:0 0 8px;color:#1c1917">👋 Welcome. Before you join, complete a quick verification.</p>
+        <p style="margin:0 0 10px;color:#78716c">Check your DMs from <strong style="color:#1c1917">@canvasbot</strong> to get started.</p>
+        <div class="notice"><i class="ti ti-clock" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>You have 5 minutes to complete</div>
+      </div>
+    </div>
+
+    <div>
+      <p class="step-label">Step 2 — captcha task in DM</p>
+      <div class="msg-box">
+        <div class="msg-header">
+          <div class="avatar av-green">CV</div>
+          <div>
+            <p class="msg-name">@canvasbot</p>
+            <p class="msg-time">now</p>
+          </div>
+        </div>
+        <p style="margin:0 0 10px;color:#1c1917">Rank these 3 DeFi protocol responses from most to least helpful. Reply with the order, e.g. <strong>B, A, C</strong>.</p>
+        <div style="margin-bottom:12px">
+          <div class="option"><p class="opt-label">Response A</p><p class="opt-text">"To swap tokens, connect your wallet, select the pair, and confirm the transaction."</p></div>
+          <div class="option"><p class="opt-label">Response B</p><p class="opt-text">"You need ETH for gas. Approve the token first, then swap. Check slippage before confirming."</p></div>
+          <div class="option" style="margin-bottom:0"><p class="opt-label">Response C</p><p class="opt-text">"Blockchain technology enables decentralised finance through trustless smart contracts."</p></div>
+        </div>
+        <div class="notice"><i class="ti ti-info-circle" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Your response helps train AI assistants to give better DeFi answers</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2" style="align-items:start;margin-top:1rem">
+    <div>
+      <p class="step-label">Step 3 — human replies</p>
+      <div class="msg-box">
+        <div class="bubble-right">
+          <div class="bubble-in"><p>B, A, C</p></div>
+        </div>
+        <div class="bubble-out-wrap">
+          <div class="avatar av-green" style="width:28px;height:28px;font-size:11px">CV</div>
+          <div class="bubble-out"><p>✓ Verified. You're in. <span style="color:#78716c">Kimi scored your response as genuine.</span></p></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="step-label">What happens onchain</p>
+      <div class="card">
+        <div class="onchain-row"><i class="ti ti-writing"></i><div><p class="onchain-title">Step 1 signal logged</p><p class="onchain-sub">completion recorded on Base</p></div></div>
+        <div class="onchain-row"><i class="ti ti-currency-dollar"></i><div><p class="onchain-title">Step 2 payout released</p><p class="onchain-sub">$0.10 USDC → group owner wallet</p></div></div>
+        <div class="onchain-row"><i class="ti ti-database"></i><div><p class="onchain-title">Response sent to advertiser</p><p class="onchain-sub">labeled RLHF data delivered</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span><i class="ti ti-users"></i>Human admitted to group</span>
+    <span><i class="ti ti-robot"></i>Canvas AI notified advertiser · 1 completion</span>
+    <span><i class="ti ti-chart-bar"></i>99 verifications remaining in budget</span>
+  </div>
+</div>
+
+<p style="font-size:10px;color:#a09890;margin-top:1rem;text-align:center">Canvas Protocol · v0.1 · confidential</p>
+</body>
+</html>

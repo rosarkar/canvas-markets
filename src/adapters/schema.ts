@@ -5,6 +5,8 @@ export async function createCanvasTables(): Promise<void> {
   const client = await db.connect();
   try {
     await client.query(`
+      CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
       CREATE TABLE IF NOT EXISTS groups (
         group_id              SERIAL PRIMARY KEY,
         tg_group_id           BIGINT NOT NULL UNIQUE,

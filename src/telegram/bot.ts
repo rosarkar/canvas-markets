@@ -46,7 +46,7 @@ export function startTelegramBot(): void {
     return webhookCallback(bot!, "express")(req, res);
   });
 
-  app.listen(config.telegram.webhookPort, () => {
+  app.listen(config.telegram.webhookPort, "0.0.0.0", () => {
     logger.info(`Canvas AI webhook listening on port ${config.telegram.webhookPort}`);
   });
 

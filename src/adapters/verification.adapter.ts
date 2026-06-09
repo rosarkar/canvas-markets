@@ -8,12 +8,15 @@ import {
   type VerificationState as State,
 } from "@/services/verification-states.js";
 
+export type VerificationEntryType = "open_join" | "join_request";
+
 export interface VerificationRow {
   verificationId: string;
   tgUserId: bigint;
   groupId: number;
   advertiserId: number | null;
   state: State;
+  entryType: VerificationEntryType;
   lockedBidPrice: bigint | null;
   kimiScore: number | null;
   responseText: string | null;
@@ -32,6 +35,7 @@ function mapRow(r: Record<string, unknown>): VerificationRow {
     groupId: r.group_id as number,
     advertiserId: r.advertiser_id as number | null,
     state: r.state as State,
+    entryType: (r.entry_type as VerificationEntryType) ?? "open_join",
     lockedBidPrice:
       r.locked_bid_price != null ? BigInt(r.locked_bid_price as string | bigint) : null,
     kimiScore: r.kimi_score as number | null,
@@ -68,12 +72,14 @@ export async function createVerification(input: {
   tgUserId: bigint;
   groupId: number;
   advertiserId?: number | null;
+  entryType?: VerificationEntryType;
 }): Promise<VerificationRow> {
   const verificationId = randomUUID();
   const expiresAt = new Date(Date.now() + config.constants.VERIFICATION_TTL_MS);
+  const entryType = input.entryType ?? "open_join";
   const res = await db.query(
-    `INSERT INTO verifications (verification_id, tg_user_id, group_id, advertiser_id, state, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO verifications (verification_id, tg_user_id, group_id, advertiser_id, state, expires_at, entry_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
     [
       verificationId,
@@ -82,6 +88,7 @@ export async function createVerification(input: {
       input.advertiserId ?? null,
       VerificationState.PENDING,
       expiresAt,
+      entryType,
     ],
   );
   return mapRow(res.rows[0]!);
@@ -146,11 +153,25 @@ export async function getActiveVerificationForUser(
   return mapRow(res.rows[0]);
 }
 
+export async function hasPassedVerification(
+  tgUserId: bigint,
+  groupId: number,
+): Promise<boolean> {
+  const res = await db.query(
+    `SELECT 1 FROM verifications
+     WHERE tg_user_id = $1 AND group_id = $2 AND state = 'PASSED'
+     LIMIT 1`,
+    [tgUserId.toString(), groupId],
+  );
+  return res.rows.length > 0;
+}
+
 export interface ExpiredVerification {
   verificationId: string;
   tgUserId: bigint;
   groupId: number;
   tgGroupId: bigint;
+  entryType: VerificationEntryType;
 }
 
 export async function expireStaleVerifications(): Promise<ExpiredVerification[]> {
@@ -159,6 +180,7 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
     tg_user_id: string;
     group_id: number;
     tg_group_id: string;
+    entry_type: VerificationEntryType;
   }>(
     `UPDATE verifications v
      SET state = 'TIMED_OUT', updated_at = NOW()
@@ -166,7 +188,7 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
      WHERE v.group_id = g.group_id
        AND v.state IN ('DEEP_LINK_SENT', 'TASK_SENT')
        AND v.expires_at < NOW()
-     RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id`,
+     RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id, v.entry_type`,
   );
   const expired: ExpiredVerification[] = [];
   for (const row of res.rows) {
@@ -176,7 +198,25 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
       tgUserId: BigInt(row.tg_user_id),
       groupId: row.group_id,
       tgGroupId: BigInt(row.tg_group_id),
+      entryType: row.entry_type ?? "open_join",
     });
   }
   return expired;
+}
+
+export async function getRecentlyPassedVerification(
+  tgUserId: bigint,
+  groupId: number,
+  withinMs = 60_000,
+): Promise<VerificationRow | null> {
+  const since = new Date(Date.now() - withinMs);
+  const res = await db.query(
+    `SELECT * FROM verifications
+     WHERE tg_user_id = $1 AND group_id = $2 AND state = 'PASSED'
+       AND updated_at > $3
+     ORDER BY updated_at DESC LIMIT 1`,
+    [tgUserId.toString(), groupId, since],
+  );
+  if (!res.rows[0]) return null;
+  return mapRow(res.rows[0]);
 }

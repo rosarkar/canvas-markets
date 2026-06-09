@@ -8,6 +8,8 @@ export interface GroupRow {
   verificationTaskText: string;
   isActive: boolean;
   registeredAt: Date;
+  lastWelcomeMessageId: bigint | null;
+  portalInviteLink: string | null;
 }
 
 function mapGroup(r: Record<string, unknown>): GroupRow {
@@ -19,6 +21,11 @@ function mapGroup(r: Record<string, unknown>): GroupRow {
     verificationTaskText: r.verification_task_text as string,
     isActive: r.is_active as boolean,
     registeredAt: r.registered_at as Date,
+    lastWelcomeMessageId:
+      r.last_welcome_message_id != null
+        ? BigInt(r.last_welcome_message_id as string | bigint)
+        : null,
+    portalInviteLink: (r.portal_invite_link as string | null) ?? null,
   };
 }
 
@@ -80,4 +87,24 @@ export async function updateOwnerWallet(ownerTgId: bigint, wallet: string): Prom
     [ownerTgId.toString(), wallet.toLowerCase()],
   );
   return res.rowCount ?? 0;
+}
+
+export async function updatePortalInviteLink(
+  groupId: number,
+  inviteLink: string,
+): Promise<void> {
+  await db.query(`UPDATE groups SET portal_invite_link = $2 WHERE group_id = $1`, [
+    groupId,
+    inviteLink,
+  ]);
+}
+
+export async function updateLastWelcomeMessageId(
+  groupId: number,
+  messageId: number | null,
+): Promise<void> {
+  await db.query(`UPDATE groups SET last_welcome_message_id = $2 WHERE group_id = $1`, [
+    groupId,
+    messageId,
+  ]);
 }

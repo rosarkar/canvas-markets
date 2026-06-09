@@ -6,6 +6,8 @@ import { logger } from "@/utils/logger.js";
 const JOIN_FROM_STATUSES = new Set(["left", "kicked"]);
 
 export function registerJoinHandler(bot: Bot): void {
+  // chat_member is the reliable join signal when the bot is a group admin.
+  // Do not also handle new_chat_members — it duplicates the same join.
   bot.on("chat_member", async (ctx) => {
     const update = ctx.chatMember;
     if (!update) return;
@@ -23,20 +25,7 @@ export function registerJoinHandler(bot: Bot): void {
       "chat_member join detected",
     );
 
-    await handleMemberJoin(ctx.api, chat.id, member.user);
-  });
-
-  bot.on("message:new_chat_members", async (ctx) => {
-    const members = ctx.message.new_chat_members;
-    if (!members?.length) return;
-
-    logger.info(
-      { tgGroupId: ctx.chat.id, count: members.length },
-      "new_chat_members join detected",
-    );
-
-    for (const member of members) {
-      await handleMemberJoin(ctx.api, ctx.chat.id, member);
-    }
+    const title = "title" in chat ? chat.title : undefined;
+    await handleMemberJoin(ctx.api, chat.id, member.user, title);
   });
 }

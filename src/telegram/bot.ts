@@ -6,6 +6,7 @@ import { config } from "@/config/index.js";
 import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
+import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerRegisterHandler } from "@/telegram/handlers/register.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
@@ -25,6 +26,7 @@ export function startTelegramBot(): void {
   registerStartHandler(bot);
   registerRegisterHandler(bot);
   registerJoinHandler(bot);
+  registerJoinRequestHandler(bot);
   registerBotMembershipHandler(bot);
   registerCaptchaCallbackHandler(bot);
   registerMessageHandler(bot);
@@ -59,7 +61,13 @@ export function startTelegramBot(): void {
   bot.api
     .setWebhook(config.telegram.webhookUrl, {
       secret_token: config.telegram.webhookSecret || undefined,
-      allowed_updates: ["message", "chat_member", "my_chat_member", "callback_query"],
+      allowed_updates: [
+        "message",
+        "chat_member",
+        "chat_join_request",
+        "my_chat_member",
+        "callback_query",
+      ],
     })
     .then(() => logger.info(`Webhook registered → ${config.telegram.webhookUrl}`))
     .catch((err) => {

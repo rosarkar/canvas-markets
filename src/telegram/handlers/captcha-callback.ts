@@ -10,7 +10,10 @@ import {
   parseCaptchaCallbackData,
 } from "@/services/captcha-questions.js";
 import { VerificationState } from "@/services/verification-states.js";
-import { admitUser, rejectUser } from "@/telegram/verification-actions.js";
+import {
+  completeVerificationFail,
+  completeVerificationPass,
+} from "@/telegram/services/verification-complete.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerCaptchaCallbackHandler(bot: Bot): void {
@@ -32,7 +35,10 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
       return;
     }
 
-    if (verification.state !== VerificationState.TASK_SENT) {
+    if (
+      verification.state !== VerificationState.TASK_SENT &&
+      verification.state !== VerificationState.DEEP_LINK_SENT
+    ) {
       await ctx.answerCallbackQuery({ text: "This verification is no longer active." });
       return;
     }
@@ -59,40 +65,56 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
       responseText: optionLabel,
     });
 
-    const chatId = Number(group.tgGroupId);
-    const userId = Number(verification.tgUserId);
     const messageId = ctx.callbackQuery.message?.message_id;
+    const dmChatId = ctx.callbackQuery.message?.chat.id;
+
+    const chat = await ctx.api.getChat(Number(group.tgGroupId));
+    const groupTitle =
+      chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
+    const me = await ctx.api.getMe();
+    const botUsername = me.username ?? "CanvasProtocolBot";
 
     if (isCorrect) {
       await transitionState(verificationId, VerificationState.PASSED);
-      await admitUser(ctx.api, chatId, userId);
+      await completeVerificationPass(ctx.api, verification, group, groupTitle, botUsername);
       await ctx.answerCallbackQuery({ text: "Verified!" });
 
-      if (messageId) {
+      if (messageId && dmChatId) {
         try {
-          await ctx.api.editMessageReplyMarkup(chatId, messageId);
-        } catch {
-          /* message may already be edited */
-        }
-      }
-
-      const username = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
-      await ctx.reply(`${username} verified — welcome to the group.`);
-      logger.info({ verificationId, groupId: group.groupId }, "User passed captcha");
-    } else {
-      await transitionState(verificationId, VerificationState.FAILED);
-      await rejectUser(ctx.api, chatId, userId);
-      await ctx.answerCallbackQuery({ text: "Wrong answer.", show_alert: true });
-
-      if (messageId) {
-        try {
-          await ctx.api.editMessageReplyMarkup(chatId, messageId);
+          await ctx.api.editMessageReplyMarkup(dmChatId, messageId);
         } catch {
           /* ignore */
         }
       }
 
-      logger.info({ verificationId, groupId: group.groupId, optionId }, "User failed captcha");
+      const successMsg =
+        verification.entryType === "join_request"
+          ? `✅ Verified for **${groupTitle}**! You've been admitted to the group.`
+          : `✅ Verified for **${groupTitle}**! You can speak in the group now.`;
+
+      await ctx.reply(successMsg, { parse_mode: "Markdown" });
+      logger.info(
+        { verificationId, groupId: group.groupId, entryType: verification.entryType },
+        "User passed captcha (DM)",
+      );
+    } else {
+      await transitionState(verificationId, VerificationState.FAILED);
+      await completeVerificationFail(ctx.api, verification, group);
+      await ctx.answerCallbackQuery({ text: "Wrong answer.", show_alert: true });
+
+      if (messageId && dmChatId) {
+        try {
+          await ctx.api.editMessageReplyMarkup(dmChatId, messageId);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      await ctx.reply("Wrong answer. You can try again in 24 hours.");
+      logger.info(
+        { verificationId, groupId: group.groupId, optionId, entryType: verification.entryType },
+        "User failed captcha (DM)",
+      );
     }
   });
 }

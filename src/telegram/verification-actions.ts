@@ -36,6 +36,30 @@ const FULL_PERMISSIONS = {
   can_manage_topics: true,
 };
 
+export async function suspendUserPendingVerification(
+  api: Api,
+  chatId: number | bigint,
+  userId: number | bigint,
+): Promise<void> {
+  try {
+    await api.banChatMember(Number(chatId), Number(userId));
+  } catch (err) {
+    logger.warn({ err, chatId, userId }, "Failed to suspend user pending verification");
+  }
+}
+
+export async function allowUserRejoin(
+  api: Api,
+  chatId: number | bigint,
+  userId: number | bigint,
+): Promise<void> {
+  try {
+    await api.unbanChatMember(Number(chatId), Number(userId));
+  } catch (err) {
+    logger.warn({ err, chatId, userId }, "Failed to unban verified user");
+  }
+}
+
 export async function restrictUserForCaptcha(
   api: Api,
   chatId: number | bigint,
@@ -70,5 +94,29 @@ export async function rejectUser(
     await api.unbanChatMember(Number(chatId), Number(userId));
   } catch (err) {
     logger.warn({ err, chatId, userId }, "Failed to kick user after failed captcha");
+  }
+}
+
+export async function approveJoinRequest(
+  api: Api,
+  chatId: number | bigint,
+  userId: number | bigint,
+): Promise<void> {
+  try {
+    await api.approveChatJoinRequest(Number(chatId), Number(userId));
+  } catch (err) {
+    logger.warn({ err, chatId, userId }, "Failed to approve join request");
+  }
+}
+
+export async function declineJoinRequest(
+  api: Api,
+  chatId: number | bigint,
+  userId: number | bigint,
+): Promise<void> {
+  try {
+    await api.declineChatJoinRequest(Number(chatId), Number(userId));
+  } catch (err) {
+    logger.warn({ err, chatId, userId }, "Failed to decline join request");
   }
 }

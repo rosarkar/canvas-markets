@@ -69,6 +69,9 @@ export async function createCanvasTables(): Promise<void> {
 
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS captcha_question_id TEXT;
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS captcha_correct_option TEXT;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS entry_type TEXT NOT NULL DEFAULT 'open_join';
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS last_welcome_message_id BIGINT;
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS portal_invite_link TEXT;
     `);
   } finally {
     client.release();

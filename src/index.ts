@@ -29,6 +29,7 @@ async function main(): Promise<void> {
   }, 60_000);
 
   logger.info("Canvas AI started");
+  console.log("[canvas-ai] started — webhook mode, captcha + register enabled");
 }
 
 main().catch((err) => {

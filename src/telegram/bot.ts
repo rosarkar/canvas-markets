@@ -3,9 +3,11 @@ import express from "express";
 import { Bot, webhookCallback } from "grammy";
 
 import { config } from "@/config/index.js";
+import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
+import { registerRegisterHandler } from "@/telegram/handlers/register.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
 import { logger } from "@/utils/logger.js";
 
@@ -21,7 +23,9 @@ export function startTelegramBot(): void {
   bot.api.config.use(autoRetry());
 
   registerStartHandler(bot);
+  registerRegisterHandler(bot);
   registerJoinHandler(bot);
+  registerBotMembershipHandler(bot);
   registerCaptchaCallbackHandler(bot);
   registerMessageHandler(bot);
 

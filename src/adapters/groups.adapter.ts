@@ -73,3 +73,11 @@ export async function pauseGroup(groupId: number): Promise<void> {
 export async function resumeGroup(groupId: number): Promise<void> {
   await db.query(`UPDATE groups SET is_active = true WHERE group_id = $1`, [groupId]);
 }
+
+export async function updateOwnerWallet(ownerTgId: bigint, wallet: string): Promise<number> {
+  const res = await db.query(
+    `UPDATE groups SET owner_wallet = $2 WHERE owner_tg_id = $1`,
+    [ownerTgId.toString(), wallet.toLowerCase()],
+  );
+  return res.rowCount ?? 0;
+}

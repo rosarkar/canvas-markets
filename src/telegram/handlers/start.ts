@@ -9,13 +9,6 @@ export function registerStartHandler(bot: Bot): void {
     );
   });
 
-  bot.command("register", async (ctx) => {
-    await ctx.reply(
-      "Group owner registration — coming in next build step.\n\n" +
-        "You'll provide: group link, Base payout wallet, and a fallback verification question.",
-    );
-  });
-
   bot.command("buy", async (ctx) => {
     await ctx.reply(
       "Advertiser buy flow — coming in next build step.\n\n" +

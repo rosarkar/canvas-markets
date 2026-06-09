@@ -66,6 +66,9 @@ export async function createCanvasTables(): Promise<void> {
         cooldown_until        TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (tg_user_id, group_id)
       );
+
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS captcha_question_id TEXT;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS captcha_correct_option TEXT;
     `);
   } finally {
     client.release();

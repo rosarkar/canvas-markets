@@ -3,6 +3,7 @@ import express from "express";
 import { Bot, webhookCallback } from "grammy";
 
 import { config } from "@/config/index.js";
+import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
@@ -21,6 +22,7 @@ export function startTelegramBot(): void {
 
   registerStartHandler(bot);
   registerJoinHandler(bot);
+  registerCaptchaCallbackHandler(bot);
   registerMessageHandler(bot);
 
   bot.catch((err) => {

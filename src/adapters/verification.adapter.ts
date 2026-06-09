@@ -17,6 +17,8 @@ export interface VerificationRow {
   lockedBidPrice: bigint | null;
   kimiScore: number | null;
   responseText: string | null;
+  captchaQuestionId: string | null;
+  captchaCorrectOption: string | null;
   attemptCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +36,8 @@ function mapRow(r: Record<string, unknown>): VerificationRow {
       r.locked_bid_price != null ? BigInt(r.locked_bid_price as string | bigint) : null,
     kimiScore: r.kimi_score as number | null,
     responseText: r.response_text as string | null,
+    captchaQuestionId: (r.captcha_question_id as string | null) ?? null,
+    captchaCorrectOption: (r.captcha_correct_option as string | null) ?? null,
     attemptCount: r.attempt_count as number,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
@@ -96,6 +100,8 @@ export async function transitionState(
     lockedBidPrice?: bigint;
     responseText?: string;
     kimiScore?: number;
+    captchaQuestionId?: string;
+    captchaCorrectOption?: string;
   },
 ): Promise<void> {
   await db.query(
@@ -104,6 +110,8 @@ export async function transitionState(
          locked_bid_price = COALESCE($3, locked_bid_price),
          response_text = COALESCE($4, response_text),
          kimi_score = COALESCE($5, kimi_score),
+         captcha_question_id = COALESCE($6, captcha_question_id),
+         captcha_correct_option = COALESCE($7, captcha_correct_option),
          updated_at = NOW()
      WHERE verification_id = $1`,
     [
@@ -112,6 +120,8 @@ export async function transitionState(
       extra?.lockedBidPrice?.toString() ?? null,
       extra?.responseText ?? null,
       extra?.kimiScore ?? null,
+      extra?.captchaQuestionId ?? null,
+      extra?.captchaCorrectOption ?? null,
     ],
   );
 
@@ -136,16 +146,37 @@ export async function getActiveVerificationForUser(
   return mapRow(res.rows[0]);
 }
 
-export async function expireStaleVerifications(): Promise<number> {
-  const res = await db.query<{ verification_id: string; tg_user_id: string; group_id: number }>(
-    `UPDATE verifications
+export interface ExpiredVerification {
+  verificationId: string;
+  tgUserId: bigint;
+  groupId: number;
+  tgGroupId: bigint;
+}
+
+export async function expireStaleVerifications(): Promise<ExpiredVerification[]> {
+  const res = await db.query<{
+    verification_id: string;
+    tg_user_id: string;
+    group_id: number;
+    tg_group_id: string;
+  }>(
+    `UPDATE verifications v
      SET state = 'TIMED_OUT', updated_at = NOW()
-     WHERE state IN ('DEEP_LINK_SENT', 'TASK_SENT')
-       AND expires_at < NOW()
-     RETURNING verification_id, tg_user_id, group_id`,
+     FROM groups g
+     WHERE v.group_id = g.group_id
+       AND v.state IN ('DEEP_LINK_SENT', 'TASK_SENT')
+       AND v.expires_at < NOW()
+     RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id`,
   );
+  const expired: ExpiredVerification[] = [];
   for (const row of res.rows) {
     await setCooldown(BigInt(row.tg_user_id), row.group_id);
+    expired.push({
+      verificationId: row.verification_id,
+      tgUserId: BigInt(row.tg_user_id),
+      groupId: row.group_id,
+      tgGroupId: BigInt(row.tg_group_id),
+    });
   }
-  return res.rowCount ?? 0;
+  return expired;
 }

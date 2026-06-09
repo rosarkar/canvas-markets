@@ -3,19 +3,27 @@ import "@/load-env.js";
 import { createCanvasTables } from "@/adapters/schema.js";
 import { connectDb } from "@/db.js";
 import { expireStaleVerifications } from "@/adapters/verification.adapter.js";
-import { startTelegramBot } from "@/telegram/bot.js";
+import { getBot, startTelegramBot } from "@/telegram/bot.js";
+import { rejectUser } from "@/telegram/verification-actions.js";
 import { logger } from "@/utils/logger.js";
 
 async function main(): Promise<void> {
+  // Bind /health before DB so Railway healthchecks don't fail on slow Postgres cold start.
+  startTelegramBot();
+
   await connectDb();
   await createCanvasTables();
-  startTelegramBot();
 
   // Expire stale verifications every minute
   setInterval(() => {
     expireStaleVerifications()
-      .then((n) => {
-        if (n > 0) logger.info({ expired: n }, "Expired stale verifications");
+      .then(async (expired) => {
+        if (expired.length === 0) return;
+        logger.info({ expired: expired.length }, "Expired stale verifications");
+        const api = getBot().api;
+        for (const row of expired) {
+          await rejectUser(api, row.tgGroupId, row.tgUserId);
+        }
       })
       .catch((err) => logger.error({ err }, "TTL sweep failed"));
   }, 60_000);

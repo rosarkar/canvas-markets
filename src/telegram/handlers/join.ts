@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 
 import { getTopBidForGroup } from "@/adapters/bidding.js";
 import { getGroupByTgId } from "@/adapters/groups.adapter.js";
@@ -7,7 +7,12 @@ import {
   isUserInCooldown,
   transitionState,
 } from "@/adapters/verification.adapter.js";
+import {
+  buildCaptchaCallbackData,
+  pickRandomCaptcha,
+} from "@/services/captcha-questions.js";
 import { VerificationState } from "@/services/verification-states.js";
+import { rejectUser, restrictUserForCaptcha } from "@/telegram/verification-actions.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerJoinHandler(bot: Bot): void {
@@ -25,41 +30,47 @@ export function registerJoinHandler(bot: Bot): void {
     if (!group?.isActive) return;
 
     if (await isUserInCooldown(tgUserId, group.groupId)) {
-      try {
-        await ctx.api.banChatMember(chat.id, Number(tgUserId));
-        await ctx.api.unbanChatMember(chat.id, Number(tgUserId));
-      } catch (err) {
-        logger.warn({ err, tgUserId: tgUserId.toString() }, "Failed to kick cooldown user");
-      }
+      await rejectUser(ctx.api, chat.id, tgUserId);
       return;
     }
 
     const topBid = await getTopBidForGroup(group.groupId);
+    const captcha = pickRandomCaptcha();
     const verification = await createVerification({
       tgUserId,
       groupId: group.groupId,
       advertiserId: topBid?.advertiserId ?? null,
     });
 
-    const botUsername = (await ctx.api.getMe()).username ?? "canvasbot";
-    const deepLink = `https://t.me/${botUsername}?start=verify_${verification.verificationId}`;
+    await transitionState(verification.verificationId, VerificationState.TASK_SENT, {
+      lockedBidPrice: topBid?.bidPerVerification ?? undefined,
+      captchaQuestionId: captcha.id,
+      captchaCorrectOption: captcha.correctOptionId,
+    });
+
+    await restrictUserForCaptcha(ctx.api, chat.id, tgUserId);
+
+    const username = member.user.username
+      ? `@${member.user.username}`
+      : member.user.first_name;
+    const keyboard = new InlineKeyboard();
+    for (const option of captcha.options) {
+      keyboard.text(
+        option.label,
+        buildCaptchaCallbackData(verification.verificationId, option.id),
+      );
+    }
 
     try {
       await ctx.api.sendMessage(
         chat.id,
-        `Welcome! Complete verification to join this group.`,
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "Verify to join", url: deepLink }]],
-          },
-        },
+        `Welcome ${username} — complete verification to participate:\n\n${captcha.prompt}`,
+        { reply_markup: keyboard },
       );
-      await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, tgGroupId: tgGroupId.toString() }, "Failed to post welcome message");
+      logger.error({ err: msg, tgGroupId: tgGroupId.toString() }, "Failed to post captcha message");
       if (msg.includes("not enough rights")) {
-        // Bot admin loss — pause group (notify owner in follow-up)
         logger.error(`Bot lost admin in group ${group.groupId}`);
       }
     }

@@ -113,8 +113,8 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
 
       const successMsg =
         verification.entryType === "join_request"
-          ? `✅ Verified for **${groupTitle}**! You've been admitted to the group.`
-          : `✅ Verified for **${groupTitle}**! You can speak in the group now.`;
+          ? `✅ You're in! Your join request for **${groupTitle}** has been approved.`
+          : `✅ You're in! You can now chat in **${groupTitle}**.`;
 
       await ctx.reply(successMsg, { parse_mode: "Markdown" });
       logger.info(
@@ -134,7 +134,7 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
         }
       }
 
-      await ctx.reply("Wrong answer. You can try again in 24 hours.");
+      await ctx.reply(`❌ Wrong answer. You can try again in 24 hours.`);
       logger.info(
         { verificationId, groupId: group.groupId, optionId, entryType: verification.entryType },
         "User failed captcha (DM)",

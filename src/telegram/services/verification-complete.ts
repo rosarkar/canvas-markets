@@ -73,12 +73,27 @@ export async function completeVerificationTimeout(
 ): Promise<void> {
   const chatId = Number(group.tgGroupId);
   const userId = Number(tgUserId);
+  const groupTitle = group.groupTitle ?? "the group";
 
   if (entryType === "join_request") {
     await declineJoinRequest(api, chatId, userId);
+    try {
+      await api.sendMessage(
+        userId,
+        `⏳ Your verification for **${groupTitle}** timed out. You're welcome to request to join again.`,
+        { parse_mode: "Markdown" },
+      );
+    } catch { /* user may have blocked the bot */ }
     return;
   }
 
   await rejectUser(api, chatId, userId);
   await deleteWelcomeGateMessage(api, chatId, group.groupId);
+  try {
+    await api.sendMessage(
+      userId,
+      `⏳ Your verification for **${groupTitle}** timed out. Feel free to try joining again.`,
+      { parse_mode: "Markdown" },
+    );
+  } catch { /* user may have blocked the bot */ }
 }

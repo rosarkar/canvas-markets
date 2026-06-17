@@ -34,12 +34,12 @@ export async function sendWelcomeGateMessage(
   await deletePreviousWelcome(api, chatId, groupId);
 
   const deepLink = `https://t.me/${botUsername}?start=verify_${verificationId}`;
-  const keyboard = new InlineKeyboard().url("Verify with Canvas", deepLink);
+  const keyboard = new InlineKeyboard().url("Verify to join →", deepLink);
 
   try {
     const msg = await api.sendMessage(
       chatId,
-      `Welcome ${userFirstName}! Tap below to verify for **${groupTitle}** and unlock chat.`,
+      `👋 Hey ${userFirstName}! **${groupTitle}** requires a quick verification before you can chat.\n\nTap below — takes about 30 seconds.`,
       { reply_markup: keyboard, parse_mode: "Markdown" },
     );
     await updateLastWelcomeMessageId(groupId, msg.message_id);

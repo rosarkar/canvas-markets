@@ -103,11 +103,11 @@ export async function beginVerification(
     if (!captchaSentInDm) {
       await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
       const deepLink = `https://t.me/${botUsername}?start=verify_${verification.verificationId}`;
-      const keyboard = new InlineKeyboard().url("Start verification", deepLink);
+      const keyboard = new InlineKeyboard().url("Verify to join →", deepLink);
       try {
         await api.sendMessage(
           user.id,
-          `You requested to join **${groupTitle}**.\n\nTap below to verify.`,
+          `👋 You requested to join **${groupTitle}**.\n\nTap below to complete your verification — it only takes 30 seconds.`,
           { reply_markup: keyboard, parse_mode: "Markdown" },
         );
       } catch {

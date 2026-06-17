@@ -94,20 +94,19 @@ async function handleDmTextResponse(
   const groupTitle =
     chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
 
-  const { passed, score } = await processOpenTextResponse(ctx.api, verification, text);
+  const { passed } = await processOpenTextResponse(ctx.api, verification, text);
 
   if (passed) {
     await ctx.reply(
-      `✅ Verified for **${groupTitle}**! ${
-        verification.entryType === "join_request"
-          ? "You've been admitted to the group."
-          : "You can speak in the group now."
-      }`,
+      verification.entryType === "join_request"
+        ? `✅ You're in! Your join request for **${groupTitle}** has been approved.`
+        : `✅ You're in! You can now chat in **${groupTitle}**.`,
       { parse_mode: "Markdown" },
     );
   } else {
     await ctx.reply(
-      `Your response didn't meet the verification bar (score: ${score}/100). You can try again in 24 hours.`,
+      `❌ Verification unsuccessful for **${groupTitle}**. You can try again in 24 hours.`,
+      { parse_mode: "Markdown" },
     );
   }
 
@@ -152,7 +151,7 @@ async function handleWebAppData(ctx: {
   await transitionState(verification.verificationId, VerificationState.PASSED);
   await completeVerificationPass(ctx.api, verification, group, groupTitle, botUsername);
 
-  await ctx.reply(`✅ Verified for **${groupTitle}**!`, { parse_mode: "Markdown" });
+  await ctx.reply(`✅ You're in! You can now chat in **${groupTitle}**.`, { parse_mode: "Markdown" });
   logger.info(
     { verificationId: verification.verificationId, optionId: parsed.optionId },
     "User passed webapp verification",

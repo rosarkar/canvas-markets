@@ -1,7 +1,7 @@
 # Canvas Protocol — Build Plan
 
 > Migrated from basemate-v2 (Telegram infra + bidding patterns). Product spec: `matthewmeakin-unknown-design-20260531-224711.md`.
-> Last updated: Jun 17, 2026 — post call with Mateo (Jun 16 late night)
+> Last updated: Jun 17, 2026 — implementation sprint (P0 complete, dashboards live)
 
 ## What Canvas Is
 
@@ -13,6 +13,21 @@ A two-sided marketplace on Telegram: **group owners** earn USDC per verified joi
 ---
 
 ## Update Log
+
+### Jun 17, 2026 — Implementation Sprint (P0 complete, dashboards live)
+
+**Completed this session:**
+
+- **Fixed decimal bid parsing** — `parseBidInput` regex now handles leading-dot floats (`.36`, `.5`). `MIN_BID_MICROUNITS` corrected from `100_000n` ($0.10) to `10_000n` ($0.01).
+- **Wallet confirmation UX** — `/wallet 0x...` now shows current → new address with inline Confirm/Cancel keyboard before saving. `/wallet` with no arg shows current wallet.
+- **Group titles stored in DB** — `group_title TEXT` column added to `groups` table. `registerGroup` and `autoRegisterGroupOnBotAdd` both persist the chat title. Dashboards and bot messages now show real group names.
+- **Advertiser dashboard (v1)** — `GET /advertiser` (wallet login → campaign cards with bid, budget, verifications, status, task text). Backed by `advertisers` table + `/link` bot command. `/buy` prompts `/link` after campaign creation if wallet not set.
+- **Group owner dashboard (v1)** — `GET /group-owner` (wallet login → group cards with verifications, top bid, pending earnings, portal link). Post-`/register` DM links owner to dashboard.
+- **Polished bot messages** — welcome gate, captcha DM header, open-text/trivia/MC/webapp prompts, pass/fail/timeout messages all updated with consistent copy and emoji. Score (`X/100`) removed from fail message.
+- **Timeout DM** — `completeVerificationTimeout` now sends user a DM explaining the timeout for both `open_join` and `join_request` entry types.
+- **Bid queue fix** — removed immediate `campaign_status = 'paused'` on outbid. `getTopBidForGroup` picks highest active bid naturally; old bidder auto-recovers if new top bidder runs out of budget.
+- **Dockerfile fix** — `COPY public ./public` added to production stage; `/advertiser` and `/group-owner` dashboards now load in Railway.
+- **`/start` message** — rewritten to be crypto-native, shows both group owner and advertiser commands + dashboard URLs + `@canvas_protocol`.
 
 ### Jun 17, 2026 — Post Call with Mateo (Jun 16)
 
@@ -53,33 +68,43 @@ src/
 ├── index.ts                         # Boot: DB, schema, bot, TTL sweeper
 ├── config/
 ├── adapters/
-│   ├── schema.ts                    # Postgres DDL + task_templates
-│   ├── groups.adapter.ts
-│   ├── bidding.ts                   # placeBid, getTopBidForGroup
+│   ├── schema.ts                    # Postgres DDL (groups, advertisers, verifications, bids)
+│   ├── groups.adapter.ts            # GroupRow + getGroupOwnerStats
+│   ├── advertisers.adapter.ts       # linkAdvertiserWallet, getCampaignsForWallet
+│   ├── bidding.ts                   # placeBid (no outbid pause), getTopBidForGroup
 │   └── verification.adapter.ts      # State machine + task_type/payload
 ├── services/
 │   ├── verification-states.ts
 │   ├── verification-tasks.ts        # Task resolver + types
 │   ├── captcha-questions.ts         # Trivia fallback (10 questions)
 │   └── scoring.ts                   # Kimi + keyword fallback
+├── api/
+│   ├── advertiser.ts                # GET /api/advertiser?wallet=
+│   └── group-owner.ts               # GET /api/group-owner?wallet=
 ├── telegram/
-│   ├── bot.ts                       # Webhook + Mini App static serve
+│   ├── bot.ts                       # Webhook + static serve (/advertiser, /group-owner, /mini-app)
 │   ├── handlers/
 │   │   ├── join.ts, join-request.ts
-│   │   ├── start.ts                 # verify_<uuid> deep links
-│   │   ├── register.ts              # /register, /wallet, /invite
-│   │   ├── buy.ts                   # Advertiser /buy conversation
+│   │   ├── start.ts                 # Crypto-native welcome + verify_<uuid> deep links
+│   │   ├── register.ts              # /register, /wallet (confirm UX), /invite
+│   │   ├── link.ts                  # /link — advertiser wallet
+│   │   ├── buy.ts                   # Advertiser /buy conversation + wallet prompt
 │   │   ├── captcha-callback.ts      # MC button answers
 │   │   ├── message.ts               # DM text → Kimi; web_app_data
 │   │   └── webapp-data.ts
 │   └── services/
 │       ├── begin-verification.ts    # Task resolver at join
-│       ├── captcha-dm.ts            # Send task by type
+│       ├── captcha-dm.ts            # Send task DM by type (polished copy)
+│       ├── welcome-gate.ts          # Welcome gate message (polished copy)
+│       ├── verification-complete.ts # Pass/fail/timeout actions + timeout DM
 │       └── process-text-response.ts # Kimi scoring path
-public/mini-app/preference.html        # Telegram Mini App spike
-scripts/seed-advertiser.ts             # Seed sample campaign
-scripts/e2e-smoke.ts                   # Automated smoke checks
-docs/DASHBOARD_MVP.md                  # Web dashboard plan
+public/
+├── advertiser/index.html            # Advertiser dashboard (wallet login → campaigns)
+├── group-owner/index.html           # Group owner dashboard (wallet login → stats)
+└── mini-app/preference.html         # Telegram Mini App spike
+scripts/seed-advertiser.ts           # Seed sample campaign
+scripts/e2e-smoke.ts                 # Automated smoke checks
+docs/DASHBOARD_MVP.md                # Web dashboard plan
 ```
 
 ---
@@ -88,15 +113,20 @@ docs/DASHBOARD_MVP.md                  # Web dashboard plan
 
 | Flow | Status | Notes |
 |------|--------|-------|
-| Join → welcome gate → DM verification | ✅ | Core flow confirmed in call |
+| Join → welcome gate → DM verification | ✅ | |
 | Trivia MC fallback | ✅ | |
 | Advertiser `task_text` → preference MC task | ✅ | |
 | Group `verification_task_text` → open-text + Kimi | ✅ | |
-| `/buy` → group → qty → bid → task → placeBid | ⚠️ Partial | Campaign creation works; decimal bid parsing broken |
-| `/register` group owner flow | ⚠️ Partial | Commands work; full 4-step conversation incomplete |
+| `/buy` → group → qty → bid → task → placeBid | ✅ | Decimal parsing fixed; `/link` prompt added after buy |
+| `/register` + `/wallet` (confirm UX) + `/invite` | ✅ | Wallet confirm keyboard; post-register owner DM |
+| `/link` — advertiser wallet | ✅ | Upsert into `advertisers` table |
+| Outbid DM notification | ✅ | Outbid campaigns stay active (no forced pause) |
+| Timeout DM to user | ✅ | Both entry types; graceful if user blocked bot |
+| Advertiser dashboard (`/advertiser`) | ✅ | Wallet login → campaign cards with spend/status |
+| Group owner dashboard (`/group-owner`) | ✅ | Wallet login → group cards with earnings/top bid |
+| Group titles in DB + dashboards | ✅ | Stored on `/register` and bot-add |
 | Mini App preference template (`preference_webapp`) | ✅ Spike | |
-| Outbid DM notification on placeBid | ✅ Basic | |
-| Railway deploy + Postgres | ✅ | Rohit has Can Edit on Railway |
+| Railway deploy + Postgres | ✅ | `public/` now copied in Dockerfile prod stage |
 | Kimi API key | ✅ | Added to Railway variables |
 
 **Still stubbed:** Onchain step ①/②, escrow contract, deposit monitoring, daily report cron, admin loss handling.
@@ -120,14 +150,14 @@ docs/DASHBOARD_MVP.md                  # Web dashboard plan
 
 ### P0 — Fix before any real group test
 
-| # | Task | Owner | Notes |
-|---|------|-------|-------|
-| 1 | **Fix decimal bid parsing** | Rohit | `/buy` can't parse `0.35`/`0.36`. `parseBidInput` needs to handle floats. Min bid = 1 cent. |
-| 2 | **Wallet confirmation UX** | Rohit | Confirm wallet on `/register`, always show option to re-check, 2FA gate on wallet changes. |
-| 3 | **Polish bot messages** | Rohit | Improve copy throughout. Use Telegram markdown/rich formatting (now confirmed available). |
-| 4 | **Bid queue logic** | Rohit | Outbid → deprioritise previous bidder after current campaign ends, not immediately. |
-| 5 | **BotFather admin checklist** | Rohit | Verify: Ban, Restrict Members, Delete Messages, Invite via Link all enabled. |
-| 6 | **Kimi calibration** | Rohit | Score first real responses, set `KIMI_PASS_THRESHOLD`. |
+| # | Task | Owner | Status | Notes |
+|---|------|-------|--------|-------|
+| 1 | **Fix decimal bid parsing** | Rohit | ✅ Done | Regex + min bid ($0.01) fixed in `usdc.ts` + `config.ts`. |
+| 2 | **Wallet confirmation UX** | Rohit | ✅ Done | `/wallet` shows confirm/cancel keyboard; post-register DM links owner to dashboard. |
+| 3 | **Polish bot messages** | Rohit | ✅ Done | Welcome gate, captcha DM, pass/fail/timeout all updated. Score removed from fail msg. |
+| 4 | **Bid queue logic** | Rohit | ✅ Done | Outbid campaigns stay active; `getTopBidForGroup` picks highest bid naturally. |
+| 5 | **BotFather admin checklist** | Rohit | ⬜ Manual | Verify: Ban, Restrict Members, Delete Messages, Invite via Link all enabled. |
+| 6 | **Kimi calibration** | Rohit | ⬜ Pending | Score first real responses, tune `KIMI_PASS_THRESHOLD`. |
 
 ### P1 — Financial rail (Mateo building now)
 
@@ -142,13 +172,13 @@ docs/DASHBOARD_MVP.md                  # Web dashboard plan
 
 ### P1 — Web Dashboard (Rohit owns)
 
-| # | Task | Notes |
-|---|------|-------|
-| 11 | **Advertiser sign-up + account creation** | On account creation, spin up wallet/budget bucket. |
-| 12 | **Captcha template picker** | Start with 5 crypto-native templates. Long-term: prompt → AI generates captcha. |
-| 13 | **Campaign management UI** | Live campaigns, spend, verification count, bid status. Pulls from Postgres. |
-| 14 | **Group owner stats dashboard** | Earnings, verifications, active campaigns. Accessible via web and Telegram agent. |
-| 15 | **Flow GIF / Loom on site** | Record full advertiser flow end-to-end. Embed on advertiser landing page. |
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 11 | **Advertiser sign-up + account creation** | ⚠️ Partial | Wallet-based login done (`/link` + `/advertiser` dashboard). Full account creation (Privy) deferred to Phase 2. |
+| 12 | **Captcha template picker** | ⬜ Pending | Start with 5 crypto-native templates. Long-term: prompt → AI generates captcha. |
+| 13 | **Campaign management UI** | ✅ Done | `/advertiser` dashboard: wallet login → campaign cards with bid, budget, verifications, status. |
+| 14 | **Group owner stats dashboard** | ✅ Done | `/group-owner` dashboard: wallet login → group cards with earnings, top bid, portal link. |
+| 15 | **Flow GIF / Loom on site** | ⬜ Pending | Record full advertiser flow end-to-end. Embed on advertiser landing page. |
 
 See `docs/DASHBOARD_MVP.md` for detailed dashboard plan.
 
@@ -186,9 +216,9 @@ See `docs/DASHBOARD_MVP.md` for detailed dashboard plan.
 
 | Phase | Deliverable |
 |-------|-------------|
-| **Now** | Fix bid parsing + wallet UX. Bot polish. Find 2 test groups. |
-| **Week 2** | Web dashboard MVP — template picker + campaign management. Avantis outreach. |
-| **Week 3** | Escrow contract wired. End-to-end paid verification in real group. |
+| ~~**Now**~~ ✅ | ~~Fix bid parsing + wallet UX. Bot polish.~~ Done. Dashboards live. |
+| **Week 2 (Now)** | Find 2 test groups (by Mon Jun 23). Captcha template picker. Avantis outreach. Kimi calibration. |
+| **Week 3** | Escrow contract wired (Mateo). End-to-end paid verification in real group. |
 | **Phase 2** | Coinbase CDP server wallets + Privy. Permissionless advertiser onboarding. |
 
 ---

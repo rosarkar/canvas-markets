@@ -80,14 +80,10 @@ export async function placeBid(input: {
       [advertiserId, input.groupId, input.bidMicroUnits.toString()],
     );
 
-    // Demote previous top bidder (last-write-wins at POC scale)
-    if (displacedTgId && displacedTgId !== input.advertiserTgId) {
-      await client.query(
-        `UPDATE advertiser_budgets SET campaign_status = 'paused', outbid_notified = false
-         WHERE group_id = $1 AND advertiser_tg_id = $2 AND advertiser_id != $3`,
-        [input.groupId, displacedTgId.toString(), advertiserId],
-      );
-    }
+    // No status change for outbid campaigns — getTopBidForGroup picks the highest
+    // active bid naturally, so outbid campaigns remain active and recover if the
+    // new top bidder exhausts their budget. displacedTgId is returned for the
+    // outbid DM notification only.
 
     await client.query("COMMIT");
     return { advertiserId, displacedAdvertiserTgId: displacedTgId };

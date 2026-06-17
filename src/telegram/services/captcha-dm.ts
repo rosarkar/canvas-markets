@@ -54,7 +54,7 @@ export async function sendVerificationTaskDm(
   task: ResolvedVerificationTask,
   groupTitle: string,
 ): Promise<boolean> {
-  const header = `Verification for **${groupTitle}**:\n\n`;
+  const header = `🔍 **${groupTitle}** — quick verification\n\n`;
 
   try {
     switch (task.taskType) {
@@ -62,8 +62,7 @@ export async function sendVerificationTaskDm(
         const payload = task.payload as { prompt: string };
         await api.sendMessage(
           userId,
-          `${header}${payload.prompt}\n\n` +
-            "Reply to this message with your answer (one sentence is fine).",
+          `${header}${payload.prompt}\n\n_Reply with your answer — a sentence or two is enough._`,
           { parse_mode: "Markdown" },
         );
         return true;
@@ -74,7 +73,7 @@ export async function sendVerificationTaskDm(
         const keyboard = buildMcKeyboard(verificationId, payload.options);
         await api.sendMessage(
           userId,
-          `${header}${payload.prompt}\n\nTap the correct answer below.`,
+          `${header}${payload.prompt}\n\n_Tap the correct answer below._`,
           { reply_markup: keyboard, parse_mode: "Markdown" },
         );
         return true;
@@ -101,7 +100,7 @@ export async function sendVerificationTaskDm(
         const keyboard = new InlineKeyboard().webApp("Open verification", webAppUrl);
         await api.sendMessage(
           userId,
-          `${header}${payload.prompt}\n\nTap below to complete verification.`,
+          `${header}${payload.prompt}\n\n_Tap below to complete._`,
           { reply_markup: keyboard, parse_mode: "Markdown" },
         );
         return true;

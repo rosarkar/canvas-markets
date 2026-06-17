@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from "grammy";
 
 import { getTopBidForGroup, placeBid } from "@/adapters/bidding.js";
 import { listActiveGroups } from "@/adapters/groups.adapter.js";
+import { getAdvertiserByTgId } from "@/adapters/advertisers.adapter.js";
 import { config } from "@/config/index.js";
 import { fromMicroUnits, parseBidInput } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
@@ -162,6 +163,15 @@ export function registerBuyHandler(bot: Bot): void {
           { advertiserId: result.advertiserId, groupId: session.groupId, fromId },
           "Advertiser campaign created via /buy",
         );
+
+        // Prompt wallet link if advertiser hasn't done it yet
+        const linked = await getAdvertiserByTgId(BigInt(fromId));
+        if (!linked) {
+          await ctx.reply(
+            "🔗 Link your Base wallet to track this campaign on the advertiser dashboard:\n`/link 0xYourAddress`",
+            { parse_mode: "Markdown" },
+          );
+        }
       } catch (err) {
         logger.error({ err }, "placeBid failed");
         await ctx.reply("Could not create campaign. Please try again.");

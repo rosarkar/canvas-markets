@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Canvas Protocol — Advertiser Dashboard</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --border: #1e1e2e;
+      --text: #e8e8f0;
+      --muted: #6b6b80;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    header .logo span { color: var(--accent); }
+    header .tag {
+      font-size: 11px;
+      background: var(--border);
+      color: var(--muted);
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+    main { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+
+    /* Login */
+    #login-view { text-align: center; padding-top: 80px; }
+    #login-view h1 { font-size: 28px; font-weight: 700; margin-bottom: 10px; }
+    #login-view p { color: var(--muted); margin-bottom: 36px; font-size: 15px; }
+    .input-row {
+      display: flex;
+      gap: 10px;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+    input[type="text"]::placeholder { color: var(--muted); font-family: -apple-system, sans-serif; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 12px 22px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error-msg {
+      color: var(--red);
+      font-size: 13px;
+      margin-top: 14px;
+    }
+    .help-text {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .help-text code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* Dashboard */
+    #dashboard-view { display: none; }
+    .dash-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .wallet-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .wallet-addr {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .logout-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 8px 14px;
+      font-size: 13px;
+    }
+    .logout-btn:hover { border-color: var(--muted); color: var(--text); background: transparent; }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 26px; font-weight: 700; }
+    .stat-value.usdc::after { content: " USDC"; font-size: 13px; color: var(--muted); font-weight: 400; }
+
+    /* Campaign cards */
+    .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .campaign-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .campaign-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .campaign-name { font-weight: 600; font-size: 15px; }
+    .status-chip {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .status-active { background: rgba(34,197,94,0.15); color: var(--green); }
+    .status-paused { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .status-exhausted, .status-expired { background: rgba(239,68,68,0.12); color: var(--red); }
+
+    .campaign-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .meta-item { }
+    .meta-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .meta-value { font-size: 14px; font-weight: 500; }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .campaign-task {
+      font-size: 13px;
+      color: var(--muted);
+      border-left: 2px solid var(--border);
+      padding-left: 10px;
+      font-style: italic;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--muted);
+    }
+    .empty-state p { margin-bottom: 8px; }
+
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: 1fr; }
+      .campaign-meta { grid-template-columns: repeat(2, 1fr); }
+      .input-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Canvas<span>Protocol</span></div>
+  <div class="tag">Advertiser Dashboard</div>
+</header>
+
+<main>
+  <!-- Login -->
+  <div id="login-view">
+    <h1>Advertiser Dashboard</h1>
+    <p>Enter your Base wallet address to view your campaigns.</p>
+    <div class="input-row">
+      <input type="text" id="wallet-input" placeholder="0x..." autocomplete="off" spellcheck="false" />
+      <button id="login-btn" onclick="login()">View Campaigns</button>
+    </div>
+    <div id="error-msg" class="error-msg" style="display:none;"></div>
+    <div class="help-text">
+      No account yet? Run <code>/link 0xYourAddress</code> in the Canvas bot after placing a bid.
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard-view">
+    <div class="dash-header">
+      <div>
+        <div class="wallet-label">Logged in as</div>
+        <div class="wallet-addr" id="wallet-display"></div>
+      </div>
+      <button class="logout-btn" onclick="logout()">Switch wallet</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Active Campaigns</div>
+        <div class="stat-value" id="stat-campaigns">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Verifications</div>
+        <div class="stat-value" id="stat-verifications">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Spent</div>
+        <div class="stat-value usdc" id="stat-spend">—</div>
+      </div>
+    </div>
+
+    <div class="section-title">Campaigns</div>
+    <div id="campaigns-list"></div>
+  </div>
+</main>
+
+<script>
+  const loginView = document.getElementById('login-view');
+  const dashView = document.getElementById('dashboard-view');
+  const walletInput = document.getElementById('wallet-input');
+  const errorMsg = document.getElementById('error-msg');
+
+  // Restore from sessionStorage
+  const saved = sessionStorage.getItem('canvas_wallet');
+  if (saved) loadDashboard(saved);
+
+  walletInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') login();
+  });
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.style.display = 'block';
+  }
+
+  function clearError() {
+    errorMsg.style.display = 'none';
+  }
+
+  async function login() {
+    const wallet = walletInput.value.trim();
+    if (!/^0x[a-fA-F0-9]{40}$/i.test(wallet)) {
+      showError('Enter a valid Base wallet address (0x...)');
+      return;
+    }
+    clearError();
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    await loadDashboard(wallet);
+    btn.disabled = false;
+    btn.textContent = 'View Campaigns';
+  }
+
+  async function loadDashboard(wallet) {
+    try {
+      const res = await fetch('/api/advertiser?wallet=' + encodeURIComponent(wallet));
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Could not load dashboard.');
+        return;
+      }
+
+      sessionStorage.setItem('canvas_wallet', wallet);
+      renderDashboard(data);
+    } catch (err) {
+      showError('Network error. Please try again.');
+    }
+  }
+
+  function renderDashboard(data) {
+    document.getElementById('wallet-display').textContent = data.wallet;
+    document.getElementById('stat-campaigns').textContent = data.totals.campaigns;
+    document.getElementById('stat-verifications').textContent = data.totals.verificationsCompleted;
+    document.getElementById('stat-spend').textContent = data.totals.totalSpend.toFixed(2);
+
+    const list = document.getElementById('campaigns-list');
+    if (data.campaigns.length === 0) {
+      list.innerHTML = '<div class="empty-state"><p>No campaigns yet.</p><p>Run /buy in the Canvas bot to create your first campaign.</p></div>';
+    } else {
+      list.innerHTML = data.campaigns.map(renderCampaign).join('');
+    }
+
+    loginView.style.display = 'none';
+    dashView.style.display = 'block';
+  }
+
+  function renderCampaign(c) {
+    const statusClass = 'status-' + c.status;
+    const bid = '$' + c.bidPerVerification.toFixed(2);
+    const remaining = '$' + c.remainingBudget.toFixed(2);
+    const date = new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const verifs = c.verificationsCompleted;
+    // Use remaining budget to estimate progress: we don't store original quantity,
+    // so show verifications completed + remaining budget as proxy
+    const task = c.taskText ? `<div class="campaign-task">${escHtml(c.taskText)}</div>` : '';
+
+    return `
+      <div class="campaign-card">
+        <div class="campaign-top">
+          <div class="campaign-name">Group #${c.groupId}</div>
+          <div class="status-chip ${statusClass}">${c.status}</div>
+        </div>
+        <div class="campaign-meta">
+          <div class="meta-item">
+            <div class="meta-label">Bid</div>
+            <div class="meta-value">${bid} / verified join</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Remaining Budget</div>
+            <div class="meta-value">${remaining} USDC</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Verifications</div>
+            <div class="meta-value">${verifs} completed</div>
+          </div>
+        </div>
+        ${task}
+        <div style="margin-top:12px; font-size:12px; color:var(--muted)">Campaign #${c.advertiserId} · Created ${date}</div>
+      </div>
+    `;
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function logout() {
+    sessionStorage.removeItem('canvas_wallet');
+    dashView.style.display = 'none';
+    loginView.style.display = 'block';
+    walletInput.value = '';
+    clearError();
+  }
+</script>
+
+</body>
+</html>

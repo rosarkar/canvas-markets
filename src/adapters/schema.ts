@@ -87,6 +87,12 @@ export async function createCanvasTables(): Promise<void> {
         created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS advertisers (
+        tg_id                 BIGINT PRIMARY KEY,
+        wallet_address        VARCHAR(42) UNIQUE,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
     `);
   } finally {
     client.release();

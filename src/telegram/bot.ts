@@ -10,9 +10,11 @@ import { registerBuyHandler } from "@/telegram/handlers/buy.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js";
+import { registerLinkHandler } from "@/telegram/handlers/link.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerRegisterHandler } from "@/telegram/handlers/register.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
+import { advertiserRouter } from "@/api/advertiser.js";
 import { logger } from "@/utils/logger.js";
 
 let bot: Bot | null = null;
@@ -29,6 +31,7 @@ export function startTelegramBot(): void {
   registerStartHandler(bot);
   registerRegisterHandler(bot);
   registerBuyHandler(bot);
+  registerLinkHandler(bot);
   registerJoinHandler(bot);
   registerJoinRequestHandler(bot);
   registerBotMembershipHandler(bot);
@@ -44,6 +47,8 @@ export function startTelegramBot(): void {
 
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   app.use("/mini-app", express.static(path.join(repoRoot, "public/mini-app")));
+  app.use("/advertiser", express.static(path.join(repoRoot, "public/advertiser")));
+  app.use(advertiserRouter);
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "canvas-ai" });

@@ -40,6 +40,7 @@ export interface CampaignSummary {
   advertiserId: number;
   groupId: number;
   tgGroupId: string;
+  groupTitle: string | null;
   bidPerVerification: number;
   remainingBudget: number;
   taskText: string | null;
@@ -57,6 +58,7 @@ export async function getCampaignsForWallet(walletAddress: string): Promise<Camp
        ab.advertiser_id,
        ab.group_id,
        g.tg_group_id::TEXT AS tg_group_id,
+       g.group_title,
        ab.bid_per_verification,
        ab.remaining_budget,
        ab.task_text,
@@ -79,6 +81,7 @@ export async function getCampaignsForWallet(walletAddress: string): Promise<Camp
     advertiserId: row.advertiser_id as number,
     groupId: row.group_id as number,
     tgGroupId: row.tg_group_id as string,
+    groupTitle: (row.group_title as string | null) ?? null,
     bidPerVerification: fromMicroUnits(BigInt(row.bid_per_verification as string)),
     remainingBudget: fromMicroUnits(BigInt(row.remaining_budget as string)),
     taskText: row.task_text as string | null,

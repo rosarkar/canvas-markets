@@ -7,6 +7,7 @@ import {
   updateOwnerWallet,
 } from "@/adapters/groups.adapter.js";
 import { createPortalInviteLink } from "@/telegram/services/portal-invite.js";
+import { config } from "@/config/index.js";
 import { logger } from "@/utils/logger.js";
 
 const PLACEHOLDER_WALLET = "0x0000000000000000000000000000000000000000";
@@ -102,6 +103,7 @@ export function registerRegisterHandler(bot: Bot): void {
       ownerWallet: wallet,
       ownerTgId: BigInt(fromId),
       verificationTaskText: "In one sentence: what do you use DeFi for?",
+      groupTitle: title ?? undefined,
     });
 
     logger.info(
@@ -134,13 +136,15 @@ export function registerRegisterHandler(bot: Bot): void {
           ? "2. Set your payout wallet: /wallet 0xYourBaseAddress"
           : `2. Payout wallet set ✅ \`${wallet}\` — update anytime with /wallet 0xNewAddress`;
 
+      const dashboardUrl = new URL(config.telegram.webhookUrl).origin + "/group-owner";
       await bot.api.sendMessage(
         fromId,
         `✅ **${title}** is live on Canvas!\n\n` +
-          "Here's your setup checklist:\n\n" +
+          "Setup checklist:\n\n" +
           "1. Share the /invite portal link so new members verify before joining\n" +
           `${walletStep}\n` +
-          "3. Verify bot admin permissions: Ban, Restrict Members, Invite via Link\n\n" +
+          "3. Confirm bot admin permissions: Ban, Restrict Members, Invite via Link\n\n" +
+          `Track verifications and earnings: ${dashboardUrl}\n\n` +
           "You'll earn USDC for every verified join once advertisers bid on your group.",
         { parse_mode: "Markdown" },
       );
@@ -294,6 +298,7 @@ export async function autoRegisterGroupOnBotAdd(
     ownerWallet: PLACEHOLDER_WALLET,
     ownerTgId: BigInt(addedByUserId),
     verificationTaskText: "In one sentence: what do you use DeFi for?",
+    groupTitle: chatTitle,
   });
 
   logger.info(

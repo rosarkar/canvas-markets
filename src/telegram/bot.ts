@@ -15,6 +15,7 @@ import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerRegisterHandler } from "@/telegram/handlers/register.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
 import { advertiserRouter } from "@/api/advertiser.js";
+import { groupOwnerRouter } from "@/api/group-owner.js";
 import { logger } from "@/utils/logger.js";
 
 let bot: Bot | null = null;
@@ -48,7 +49,9 @@ export function startTelegramBot(): void {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   app.use("/mini-app", express.static(path.join(repoRoot, "public/mini-app")));
   app.use("/advertiser", express.static(path.join(repoRoot, "public/advertiser")));
+  app.use("/group-owner", express.static(path.join(repoRoot, "public/group-owner")));
   app.use(advertiserRouter);
+  app.use(groupOwnerRouter);
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "canvas-ai" });

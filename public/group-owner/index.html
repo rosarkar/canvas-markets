@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Canvas Protocol — Group Owner Dashboard</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --border: #1e1e2e;
+      --text: #e8e8f0;
+      --muted: #6b6b80;
+      --accent: #22c55e;
+      --accent-dim: rgba(34,197,94,0.15);
+      --blue: #6366f1;
+      --yellow: #eab308;
+      --yellow-dim: rgba(234,179,8,0.12);
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    header .logo span { color: var(--accent); }
+    header .tag {
+      font-size: 11px;
+      background: var(--border);
+      color: var(--muted);
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+    main { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+
+    /* Login */
+    #login-view { text-align: center; padding-top: 80px; }
+    #login-view h1 { font-size: 28px; font-weight: 700; margin-bottom: 10px; }
+    #login-view p { color: var(--muted); margin-bottom: 36px; font-size: 15px; }
+    .input-row { display: flex; gap: 10px; max-width: 520px; margin: 0 auto; }
+    input[type="text"] {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+    input[type="text"]::placeholder { color: var(--muted); font-family: -apple-system, sans-serif; }
+    button {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 12px 22px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    button:hover { opacity: 0.88; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .error-msg { color: #ef4444; font-size: 13px; margin-top: 14px; }
+    .help-text { color: var(--muted); font-size: 13px; margin-top: 16px; }
+    .help-text code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* Dashboard */
+    #dashboard-view { display: none; }
+    .dash-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .wallet-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .wallet-addr { font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; }
+    .logout-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .logout-btn:hover { border-color: var(--muted); color: var(--text); opacity: 1; background: transparent; }
+
+    /* Stats */
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 26px; font-weight: 700; }
+    .stat-usdc::after { content: " USDC"; font-size: 13px; color: var(--muted); font-weight: 400; }
+    .stat-pending { color: var(--yellow); }
+
+    /* Group cards */
+    .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .group-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .group-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .group-name { font-weight: 600; font-size: 16px; }
+    .live-chip {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .group-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .meta-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .meta-value { font-size: 15px; font-weight: 600; }
+    .meta-value.green { color: var(--accent); }
+    .meta-value.yellow { color: var(--yellow); }
+
+    .portal-section {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .portal-label { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+    .portal-link {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12px;
+      color: var(--blue);
+      word-break: break-all;
+      text-decoration: none;
+    }
+    .portal-link:hover { text-decoration: underline; }
+    .no-portal { font-size: 13px; color: var(--muted); font-style: italic; }
+
+    .earning-note {
+      background: var(--yellow-dim);
+      border: 1px solid rgba(234,179,8,0.2);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--yellow);
+      margin-top: 12px;
+    }
+
+    .empty-state { text-align: center; padding: 60px 24px; color: var(--muted); }
+
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: 1fr; }
+      .group-meta { grid-template-columns: repeat(2, 1fr); }
+      .input-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Canvas<span>Protocol</span></div>
+  <div class="tag">Group Owner Dashboard</div>
+</header>
+
+<main>
+  <!-- Login -->
+  <div id="login-view">
+    <h1>Group Owner Dashboard</h1>
+    <p>Enter your Base payout wallet to view your groups and earnings.</p>
+    <div class="input-row">
+      <input type="text" id="wallet-input" placeholder="0x..." autocomplete="off" spellcheck="false" />
+      <button id="login-btn" onclick="login()">View Dashboard</button>
+    </div>
+    <div id="error-msg" class="error-msg" style="display:none;"></div>
+    <div class="help-text">
+      Set your wallet in the bot with <code>/wallet 0xYourAddress</code> after running <code>/register</code>.
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard-view">
+    <div class="dash-header">
+      <div>
+        <div class="wallet-label">Payout wallet</div>
+        <div class="wallet-addr" id="wallet-display"></div>
+      </div>
+      <button class="logout-btn" onclick="logout()">Switch wallet</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Groups</div>
+        <div class="stat-value" id="stat-groups">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Verifications</div>
+        <div class="stat-value" id="stat-verifications">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending Earnings</div>
+        <div class="stat-value stat-pending stat-usdc" id="stat-earnings">—</div>
+      </div>
+    </div>
+
+    <div class="section-title">Your Groups</div>
+    <div id="groups-list"></div>
+  </div>
+</main>
+
+<script>
+  const loginView = document.getElementById('login-view');
+  const dashView = document.getElementById('dashboard-view');
+  const walletInput = document.getElementById('wallet-input');
+  const errorMsg = document.getElementById('error-msg');
+
+  const saved = sessionStorage.getItem('canvas_owner_wallet');
+  if (saved) loadDashboard(saved);
+
+  walletInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+
+  function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
+  function clearError() { errorMsg.style.display = 'none'; }
+
+  async function login() {
+    const wallet = walletInput.value.trim();
+    if (!/^0x[a-fA-F0-9]{40}$/i.test(wallet)) {
+      showError('Enter a valid Base wallet address (0x...)');
+      return;
+    }
+    clearError();
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    await loadDashboard(wallet);
+    btn.disabled = false;
+    btn.textContent = 'View Dashboard';
+  }
+
+  async function loadDashboard(wallet) {
+    try {
+      const res = await fetch('/api/group-owner?wallet=' + encodeURIComponent(wallet));
+      const data = await res.json();
+      if (!res.ok) { showError(data.error || 'Could not load dashboard.'); return; }
+      sessionStorage.setItem('canvas_owner_wallet', wallet);
+      renderDashboard(data);
+    } catch (err) {
+      showError('Network error. Please try again.');
+    }
+  }
+
+  function renderDashboard(data) {
+    document.getElementById('wallet-display').textContent = data.wallet;
+    document.getElementById('stat-groups').textContent = data.totals.groups;
+    document.getElementById('stat-verifications').textContent = data.totals.totalVerifications;
+    document.getElementById('stat-earnings').textContent = data.totals.totalPendingEarnings.toFixed(2);
+
+    const list = document.getElementById('groups-list');
+    if (data.groups.length === 0) {
+      list.innerHTML = '<div class="empty-state"><p>No groups found.</p><p>Run /register in your Telegram group then /wallet to set this address.</p></div>';
+    } else {
+      list.innerHTML = data.groups.map(renderGroup).join('');
+    }
+
+    loginView.style.display = 'none';
+    dashView.style.display = 'block';
+  }
+
+  function renderGroup(g) {
+    const name = escHtml(g.groupTitle || 'Group #' + g.groupId);
+    const verifs = g.totalVerifications;
+    const earnings = g.pendingEarnings.toFixed(2);
+    const topBid = g.topBid != null ? '$' + g.topBid.toFixed(2) + ' / join' : 'No active bids';
+    const topBidClass = g.topBid != null ? 'green' : '';
+
+    const portalSection = g.portalInviteLink
+      ? `<div class="portal-section">
+           <div style="flex:1">
+             <div class="portal-label">Verification portal link</div>
+             <a class="portal-link" href="${escHtml(g.portalInviteLink)}" target="_blank">${escHtml(g.portalInviteLink)}</a>
+           </div>
+         </div>`
+      : `<div class="portal-section"><span class="no-portal">No portal link yet — run /invite in the group to generate one.</span></div>`;
+
+    const earningNote = g.pendingEarnings > 0
+      ? `<div class="earning-note">⏳ $${earnings} USDC pending payout — releases when escrow is wired (coming soon).</div>`
+      : '';
+
+    return `
+      <div class="group-card">
+        <div class="group-top">
+          <div class="group-name">${name}</div>
+          <div class="live-chip">Live</div>
+        </div>
+        <div class="group-meta">
+          <div>
+            <div class="meta-label">Verifications</div>
+            <div class="meta-value">${verifs}</div>
+          </div>
+          <div>
+            <div class="meta-label">Top Bid</div>
+            <div class="meta-value ${topBidClass}">${topBid}</div>
+          </div>
+          <div>
+            <div class="meta-label">Pending Earnings</div>
+            <div class="meta-value yellow">$${earnings} USDC</div>
+          </div>
+        </div>
+        ${portalSection}
+        ${earningNote}
+      </div>
+    `;
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function logout() {
+    sessionStorage.removeItem('canvas_owner_wallet');
+    dashView.style.display = 'none';
+    loginView.style.display = 'block';
+    walletInput.value = '';
+    clearError();
+  }
+</script>
+
+</body>
+</html>

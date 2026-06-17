@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 
+import { config } from "@/config/index.js";
 import { getGroupById } from "@/adapters/groups.adapter.js";
 import { getVerificationByToken, transitionState } from "@/adapters/verification.adapter.js";
 import { VerificationState } from "@/services/verification-states.js";
@@ -55,10 +56,23 @@ export function registerStartHandler(bot: Bot): void {
       return;
     }
 
+    const origin = new URL(config.telegram.webhookUrl).origin;
     await ctx.reply(
-      "Canvas AI — monetise your Telegram group gating.\n\n" +
-        "Group owners: send /register\n" +
-        "Advertisers: send /buy",
+      "👋 Welcome to *Canvas Protocol*\n\n" +
+        "The marketplace where Telegram group owners earn USDC for every verified join — and advertisers reach DeFi-native users who actually engage.\n\n" +
+        "━━━━━━━━━━━━━━\n" +
+        "👥 *Group owners*\n" +
+        "/register — activate Canvas in your group\n" +
+        "/invite — get your verification portal link\n" +
+        "/wallet 0x... — set your USDC payout address\n" +
+        `Dashboard: ${origin}/group-owner\n\n` +
+        "📢 *Advertisers*\n" +
+        "/buy — launch a verified-join campaign\n" +
+        "/link 0x... — connect your wallet for the dashboard\n" +
+        `Dashboard: ${origin}/advertiser\n\n` +
+        "━━━━━━━━━━━━━━\n" +
+        "Follow us: @canvas\\_protocol on X",
+      { parse_mode: "Markdown" },
     );
   });
 }

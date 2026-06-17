@@ -362,7 +362,7 @@
     return `
       <div class="campaign-card">
         <div class="campaign-top">
-          <div class="campaign-name">Group #${c.groupId}</div>
+          <div class="campaign-name">${escHtml(c.groupTitle || 'Group #' + c.groupId)}</div>
           <div class="status-chip ${statusClass}">${c.status}</div>
         </div>
         <div class="campaign-meta">

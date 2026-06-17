@@ -1,10 +1,22 @@
 import { Bot } from "grammy";
 
-import { getGroupByTgId } from "@/adapters/groups.adapter.js";
+import { getGroupByTgId, getGroupById } from "@/adapters/groups.adapter.js";
 import {
+  getActiveDmVerificationForUser,
   getActiveVerificationForUser,
+  getVerificationByToken,
   hasPassedVerification,
+  transitionState,
 } from "@/adapters/verification.adapter.js";
+import { VerificationState } from "@/services/verification-states.js";
+import { hasActiveBuySession } from "@/telegram/handlers/buy.js";
+import { parseWebAppData } from "@/telegram/handlers/webapp-data.js";
+import {
+  completeVerificationFail,
+  completeVerificationPass,
+} from "@/telegram/services/verification-complete.js";
+import { processOpenTextResponse } from "@/telegram/services/process-text-response.js";
+import { logger } from "@/utils/logger.js";
 
 export function registerMessageHandler(bot: Bot): void {
   bot.on("message", async (ctx, next) => {
@@ -13,6 +25,22 @@ export function registerMessageHandler(bot: Bot): void {
     if (!from || from.is_bot) {
       await next();
       return;
+    }
+
+    // Mini App completion data (preference_webapp tasks)
+    if (chat.type === "private" && ctx.message.web_app_data?.data) {
+      const handled = await handleWebAppData(ctx);
+      if (handled) return;
+      await next();
+      return;
+    }
+
+    // Open-text verification replies in DM
+    if (chat.type === "private" && ctx.message.text && !ctx.message.text.startsWith("/")) {
+      if (!hasActiveBuySession(from.id)) {
+        const handled = await handleDmTextResponse(ctx, ctx.message.text.trim());
+        if (handled) return;
+      }
     }
 
     if (chat.type !== "group" && chat.type !== "supergroup") {
@@ -48,4 +76,86 @@ export function registerMessageHandler(bot: Bot): void {
       /* may lack delete permission */
     }
   });
+}
+
+async function handleDmTextResponse(
+  ctx: { from: { id: number }; api: import("grammy").Bot["api"]; reply: (text: string, extra?: object) => Promise<unknown> },
+  text: string,
+): Promise<boolean> {
+  if (!text) return false;
+
+  const verification = await getActiveDmVerificationForUser(BigInt(ctx.from.id));
+  if (!verification) return false;
+
+  const group = await getGroupById(verification.groupId);
+  if (!group) return false;
+
+  const chat = await ctx.api.getChat(Number(group.tgGroupId));
+  const groupTitle =
+    chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
+
+  const { passed, score } = await processOpenTextResponse(ctx.api, verification, text);
+
+  if (passed) {
+    await ctx.reply(
+      `✅ Verified for **${groupTitle}**! ${
+        verification.entryType === "join_request"
+          ? "You've been admitted to the group."
+          : "You can speak in the group now."
+      }`,
+      { parse_mode: "Markdown" },
+    );
+  } else {
+    await ctx.reply(
+      `Your response didn't meet the verification bar (score: ${score}/100). You can try again in 24 hours.`,
+    );
+  }
+
+  return true;
+}
+
+async function handleWebAppData(ctx: {
+  from: { id: number };
+  message: { web_app_data?: { data: string } };
+  api: import("grammy").Bot["api"];
+  reply: (text: string, extra?: object) => Promise<unknown>;
+}): Promise<boolean> {
+  const raw = ctx.message.web_app_data?.data;
+  if (!raw) return false;
+
+  const parsed = parseWebAppData(raw);
+  if (!parsed) return false;
+
+  const verification = await getVerificationByToken(parsed.verificationId);
+  if (!verification) return false;
+  if (verification.tgUserId !== BigInt(ctx.from.id)) return false;
+  if (
+    verification.state !== VerificationState.TASK_SENT &&
+    verification.state !== VerificationState.DEEP_LINK_SENT
+  ) {
+    return false;
+  }
+
+  const group = await getGroupById(verification.groupId);
+  if (!group) return false;
+
+  await transitionState(verification.verificationId, VerificationState.RESPONSE_RECEIVED, {
+    responseText: parsed.optionLabel,
+  });
+
+  const chat = await ctx.api.getChat(Number(group.tgGroupId));
+  const groupTitle =
+    chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
+  const me = await ctx.api.getMe();
+  const botUsername = me.username ?? "CanvasProtocolBot";
+
+  await transitionState(verification.verificationId, VerificationState.PASSED);
+  await completeVerificationPass(ctx.api, verification, group, groupTitle, botUsername);
+
+  await ctx.reply(`✅ Verified for **${groupTitle}**!`, { parse_mode: "Markdown" });
+  logger.info(
+    { verificationId: verification.verificationId, optionId: parsed.optionId },
+    "User passed webapp verification",
+  );
+  return true;
 }

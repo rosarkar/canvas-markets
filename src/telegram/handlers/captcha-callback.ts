@@ -9,6 +9,13 @@ import {
   getCaptchaById,
   parseCaptchaCallbackData,
 } from "@/services/captcha-questions.js";
+import {
+  isPassingMcAnswer,
+  parseTaskPayload,
+  TaskType,
+  type PreferenceMcPayload,
+  type TriviaMcPayload,
+} from "@/services/verification-tasks.js";
 import { VerificationState } from "@/services/verification-states.js";
 import {
   completeVerificationFail,
@@ -17,9 +24,12 @@ import {
 import { logger } from "@/utils/logger.js";
 
 export function registerCaptchaCallbackHandler(bot: Bot): void {
-  bot.on("callback_query:data", async (ctx) => {
+  bot.on("callback_query:data", async (ctx, next) => {
     const parsed = parseCaptchaCallbackData(ctx.callbackQuery.data);
-    if (!parsed) return;
+    if (!parsed) {
+      await next();
+      return;
+    }
 
     const { verificationId, optionId } = parsed;
     const fromId = BigInt(ctx.from.id);
@@ -54,12 +64,26 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
       return;
     }
 
-    const captcha = verification.captchaQuestionId
-      ? getCaptchaById(verification.captchaQuestionId)
-      : undefined;
-    const optionLabel =
-      captcha?.options.find((o) => o.id === optionId)?.label ?? optionId;
-    const isCorrect = verification.captchaCorrectOption === optionId;
+    const taskType = (verification.taskType as TaskType) ?? TaskType.TRIVIA_MC;
+    const payload = parseTaskPayload(taskType, verification.taskPayload);
+
+    let optionLabel = optionId;
+    if (payload && "options" in payload) {
+      optionLabel =
+        (payload as TriviaMcPayload | PreferenceMcPayload).options.find((o) => o.id === optionId)
+          ?.label ?? optionId;
+    } else if (verification.captchaQuestionId) {
+      const captcha = getCaptchaById(verification.captchaQuestionId);
+      optionLabel = captcha?.options.find((o) => o.id === optionId)?.label ?? optionId;
+    }
+
+    const correctOptionId =
+      verification.captchaCorrectOption ??
+      (payload && "correctOptionId" in payload
+        ? (payload as TriviaMcPayload).correctOptionId
+        : null);
+
+    const isCorrect = isPassingMcAnswer(taskType, correctOptionId, optionId);
 
     await transitionState(verificationId, VerificationState.RESPONSE_RECEIVED, {
       responseText: optionLabel,
@@ -94,8 +118,8 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
 
       await ctx.reply(successMsg, { parse_mode: "Markdown" });
       logger.info(
-        { verificationId, groupId: group.groupId, entryType: verification.entryType },
-        "User passed captcha (DM)",
+        { verificationId, groupId: group.groupId, entryType: verification.entryType, taskType },
+        "User passed MC verification (DM)",
       );
     } else {
       await transitionState(verificationId, VerificationState.FAILED);

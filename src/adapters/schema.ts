@@ -70,8 +70,23 @@ export async function createCanvasTables(): Promise<void> {
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS captcha_question_id TEXT;
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS captcha_correct_option TEXT;
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS entry_type TEXT NOT NULL DEFAULT 'open_join';
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS task_type TEXT;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS task_payload JSONB;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS last_welcome_message_id BIGINT;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS portal_invite_link TEXT;
+      ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS template_id INT;
+
+      CREATE TABLE IF NOT EXISTS task_templates (
+        template_id           SERIAL PRIMARY KEY,
+        advertiser_tg_id      BIGINT,
+        name                  TEXT NOT NULL,
+        task_type             TEXT NOT NULL
+          CHECK (task_type IN ('open_text', 'trivia_mc', 'preference_mc', 'preference_webapp')),
+        payload               JSONB NOT NULL,
+        preview_image_url     TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
     `);
   } finally {
     client.release();

@@ -1,9 +1,12 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Bot, webhookCallback } from "grammy";
 
 import { config } from "@/config/index.js";
 import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
+import { registerBuyHandler } from "@/telegram/handlers/buy.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js";
@@ -25,6 +28,7 @@ export function startTelegramBot(): void {
 
   registerStartHandler(bot);
   registerRegisterHandler(bot);
+  registerBuyHandler(bot);
   registerJoinHandler(bot);
   registerJoinRequestHandler(bot);
   registerBotMembershipHandler(bot);
@@ -37,6 +41,9 @@ export function startTelegramBot(): void {
 
   const app = express();
   app.use(express.json());
+
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  app.use("/mini-app", express.static(path.join(repoRoot, "public/mini-app")));
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "canvas-ai" });

@@ -22,6 +22,8 @@ export interface VerificationRow {
   responseText: string | null;
   captchaQuestionId: string | null;
   captchaCorrectOption: string | null;
+  taskType: string | null;
+  taskPayload: unknown | null;
   attemptCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -42,6 +44,8 @@ function mapRow(r: Record<string, unknown>): VerificationRow {
     responseText: r.response_text as string | null,
     captchaQuestionId: (r.captcha_question_id as string | null) ?? null,
     captchaCorrectOption: (r.captcha_correct_option as string | null) ?? null,
+    taskType: (r.task_type as string | null) ?? null,
+    taskPayload: r.task_payload ?? null,
     attemptCount: r.attempt_count as number,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
@@ -109,6 +113,8 @@ export async function transitionState(
     kimiScore?: number;
     captchaQuestionId?: string;
     captchaCorrectOption?: string;
+    taskType?: string;
+    taskPayload?: unknown;
   },
 ): Promise<void> {
   await db.query(
@@ -119,6 +125,8 @@ export async function transitionState(
          kimi_score = COALESCE($5, kimi_score),
          captcha_question_id = COALESCE($6, captcha_question_id),
          captcha_correct_option = COALESCE($7, captcha_correct_option),
+         task_type = COALESCE($8, task_type),
+         task_payload = COALESCE($9, task_payload),
          updated_at = NOW()
      WHERE verification_id = $1`,
     [
@@ -129,6 +137,8 @@ export async function transitionState(
       extra?.kimiScore ?? null,
       extra?.captchaQuestionId ?? null,
       extra?.captchaCorrectOption ?? null,
+      extra?.taskType ?? null,
+      extra?.taskPayload != null ? JSON.stringify(extra.taskPayload) : null,
     ],
   );
 
@@ -148,6 +158,23 @@ export async function getActiveVerificationForUser(
        AND state NOT IN ('PASSED', 'FAILED', 'TIMED_OUT')
      ORDER BY created_at DESC LIMIT 1`,
     [tgUserId.toString(), groupId],
+  );
+  if (!res.rows[0]) return null;
+  return mapRow(res.rows[0]);
+}
+
+/** Active verification awaiting a DM text reply (open_text tasks). */
+export async function getActiveDmVerificationForUser(
+  tgUserId: bigint,
+): Promise<VerificationRow | null> {
+  const res = await db.query(
+    `SELECT * FROM verifications
+     WHERE tg_user_id = $1
+       AND state IN ('TASK_SENT', 'DEEP_LINK_SENT')
+       AND task_type = 'open_text'
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY created_at DESC LIMIT 1`,
+    [tgUserId.toString()],
   );
   if (!res.rows[0]) return null;
   return mapRow(res.rows[0]);

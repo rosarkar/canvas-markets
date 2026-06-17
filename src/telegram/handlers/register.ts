@@ -1,7 +1,8 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 
 import {
   getGroupByTgId,
+  getGroupsByOwnerTgId,
   registerGroup,
   updateOwnerWallet,
 } from "@/adapters/groups.adapter.js";
@@ -14,6 +15,9 @@ const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const ADMIN_CHECKLIST =
   "Bot admin permissions needed: **Ban users**, **Restrict members**, **Invite users via link**.\n" +
   "In @BotFather: **Group Privacy → Disabled** (so join-request DMs work).";
+
+/** Pending wallet updates awaiting inline-keyboard confirmation. userId → new wallet */
+const pendingWallets = new Map<number, string>();
 
 function parseWallet(input: string | undefined): string | null {
   const trimmed = input?.trim();
@@ -122,6 +126,27 @@ export function registerRegisterHandler(bot: Bot): void {
     );
 
     await replyWithPortalLink(bot, chat.id);
+
+    // DM the group owner with next-step checklist
+    try {
+      const walletStep =
+        wallet === PLACEHOLDER_WALLET
+          ? "2. Set your payout wallet: /wallet 0xYourBaseAddress"
+          : `2. Payout wallet set ✅ \`${wallet}\` — update anytime with /wallet 0xNewAddress`;
+
+      await bot.api.sendMessage(
+        fromId,
+        `✅ **${title}** is live on Canvas!\n\n` +
+          "Here's your setup checklist:\n\n" +
+          "1. Share the /invite portal link so new members verify before joining\n" +
+          `${walletStep}\n` +
+          "3. Verify bot admin permissions: Ban, Restrict Members, Invite via Link\n\n" +
+          "You'll earn USDC for every verified join once advertisers bid on your group.",
+        { parse_mode: "Markdown" },
+      );
+    } catch {
+      /* Owner hasn't started the bot in DM yet — they'll see the group message */
+    }
   });
 
   bot.command("invite", async (ctx) => {
@@ -168,23 +193,90 @@ export function registerRegisterHandler(bot: Bot): void {
     if (!fromId) return;
 
     const wallet = parseWallet(ctx.match);
+
     if (!wallet) {
-      await ctx.reply("Send your Base wallet like:\n/wallet 0x1234...abcd");
+      // No address provided — show current wallet
+      const groups = await getGroupsByOwnerTgId(BigInt(fromId));
+      if (groups.length === 0) {
+        await ctx.reply(
+          "No registered groups found for your account. Register a group first with /register inside the group.",
+        );
+        return;
+      }
+      const currentWallet = groups[0]!.ownerWallet;
+      const isPlaceholder = currentWallet === PLACEHOLDER_WALLET;
+      await ctx.reply(
+        isPlaceholder
+          ? "No payout wallet set yet.\n\nSend your Base address:\n`/wallet 0xYourAddress`"
+          : `Current payout wallet:\n\`${currentWallet}\`\n\nTo update it: /wallet 0xNewAddress`,
+        { parse_mode: "Markdown" },
+      );
       return;
     }
 
-    const updated = await updateOwnerWallet(BigInt(fromId), wallet);
-    if (updated === 0) {
+    // Address provided — look up current and ask for confirmation
+    const groups = await getGroupsByOwnerTgId(BigInt(fromId));
+    if (groups.length === 0) {
       await ctx.reply(
         "No registered groups found for your account. Register a group first with /register inside the group.",
       );
       return;
     }
 
-    logger.info({ ownerTgId: fromId, wallet, groupsUpdated: updated }, "Owner wallet updated");
-    await ctx.reply(`✅ Payout wallet updated on ${updated} group(s):\n\`${wallet}\``, {
-      parse_mode: "Markdown",
-    });
+    const currentWallet = groups[0]!.ownerWallet;
+    const isPlaceholder = currentWallet === PLACEHOLDER_WALLET;
+
+    pendingWallets.set(fromId, wallet);
+
+    const header = isPlaceholder
+      ? "Setting payout wallet to:"
+      : `Changing payout wallet\n\nFrom: \`${currentWallet}\`\nTo:`;
+
+    const keyboard = new InlineKeyboard()
+      .text("Confirm", "wallet:confirm")
+      .text("Cancel", "wallet:cancel");
+
+    await ctx.reply(
+      `${header}\n\`${wallet}\`\n\nConfirm this address?`,
+      { parse_mode: "Markdown", reply_markup: keyboard },
+    );
+  });
+
+  // Wallet confirmation / cancellation
+  bot.on("callback_query:data", async (ctx, next) => {
+    const data = ctx.callbackQuery.data;
+    if (!data.startsWith("wallet:")) {
+      await next();
+      return;
+    }
+
+    const fromId = ctx.from.id;
+
+    if (data === "wallet:confirm") {
+      const wallet = pendingWallets.get(fromId);
+      if (!wallet) {
+        await ctx.answerCallbackQuery({ text: "Session expired. Send /wallet again.", show_alert: true });
+        return;
+      }
+      await ctx.answerCallbackQuery();
+      const updated = await updateOwnerWallet(BigInt(fromId), wallet);
+      pendingWallets.delete(fromId);
+      await ctx.editMessageText(
+        `✅ Payout wallet updated on ${updated} group(s):\n\`${wallet}\``,
+        { parse_mode: "Markdown" },
+      );
+      logger.info({ ownerTgId: fromId, wallet, groupsUpdated: updated }, "Owner wallet confirmed and updated");
+      return;
+    }
+
+    if (data === "wallet:cancel") {
+      pendingWallets.delete(fromId);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText("Wallet update cancelled.");
+      return;
+    }
+
+    await next();
   });
 }
 

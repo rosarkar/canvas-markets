@@ -23,10 +23,11 @@ export function parseBidInput(input: string): bigint {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("Bid amount is required");
 
-  const withDollar = trimmed.match(/^\$\s*([\d,]+(?:\.\d+)?)\s*$/);
+  // Allow leading-dot decimals like ".36" in addition to "0.36"
+  const withDollar = trimmed.match(/^\$\s*([\d,]*\.?\d+)\s*$/);
   if (withDollar) return toMicroUnits(withDollar[1]!.replace(/,/g, ""));
 
-  const plain = trimmed.match(/^([\d,]+(?:\.\d+)?)\s*$/);
+  const plain = trimmed.match(/^([\d,]*\.?\d+)\s*$/);
   if (plain) return toMicroUnits(plain[1]!.replace(/,/g, ""));
 
   throw new Error(`Could not parse bid amount: ${input}`);

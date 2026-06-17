@@ -81,6 +81,14 @@ export async function resumeGroup(groupId: number): Promise<void> {
   await db.query(`UPDATE groups SET is_active = true WHERE group_id = $1`, [groupId]);
 }
 
+export async function getGroupsByOwnerTgId(ownerTgId: bigint): Promise<GroupRow[]> {
+  const res = await db.query(
+    `SELECT * FROM groups WHERE owner_tg_id = $1 AND is_active = true ORDER BY group_id`,
+    [ownerTgId.toString()],
+  );
+  return res.rows.map(mapGroup);
+}
+
 export async function updateOwnerWallet(ownerTgId: bigint, wallet: string): Promise<number> {
   const res = await db.query(
     `UPDATE groups SET owner_wallet = $2 WHERE owner_tg_id = $1`,

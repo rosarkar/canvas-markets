@@ -63,6 +63,6 @@ export const config: Config = {
     KIMI_PASS_THRESHOLD: Number(process.env.KIMI_PASS_THRESHOLD ?? "0"),
     VERIFICATION_TTL_MS: 300_000,
     COOLDOWN_MS: 86_400_000,
-    MIN_BID_MICROUNITS: 100_000n,
+    MIN_BID_MICROUNITS: 10_000n,
   },
 };

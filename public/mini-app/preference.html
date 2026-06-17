@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Canvas Verification</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #f9f8f7);
+      --text: var(--tg-theme-text-color, #1c1917);
+      --hint: var(--tg-theme-hint-color, #78716c);
+      --btn: var(--tg-theme-button-color, #2563eb);
+      --btn-text: var(--tg-theme-button-text-color, #fff);
+      --card: var(--tg-theme-secondary-bg-color, #fff);
+      --border: #e4e0da;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      min-height: 100vh;
+    }
+    h1 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: var(--hint); margin-bottom: 16px; }
+    .prompt {
+      background: var(--card);
+      border: 0.5px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 14px;
+      line-height: 1.45;
+      margin-bottom: 16px;
+    }
+    .option {
+      background: var(--card);
+      border: 0.5px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .option:active { transform: scale(0.98); }
+    .option.selected { border-color: var(--btn); box-shadow: 0 0 0 1px var(--btn); }
+    .opt-label { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .opt-desc { font-size: 12px; color: var(--hint); line-height: 1.4; }
+    .footer { font-size: 11px; color: var(--hint); text-align: center; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Canvas Verification</h1>
+  <p class="sub">Choose the option that best describes you</p>
+  <div class="prompt" id="prompt">Loading…</div>
+  <div id="options"></div>
+  <p class="footer">Your choice helps match you with relevant DeFi communities.</p>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const verificationId = params.get("v") || "";
+    const prompt = params.get("prompt") || "Which best describes your DeFi interest?";
+
+    document.getElementById("prompt").textContent = prompt;
+
+    const OPTIONS = [
+      { id: "yield", label: "Earn yield", description: "Lend, stake, or farm for passive returns" },
+      { id: "trade", label: "Trade actively", description: "Swap, perps, or market-make on DEXs" },
+      { id: "explore", label: "Explore new protocols", description: "Try new apps, bridges, and launches on Base" },
+    ];
+
+    const container = document.getElementById("options");
+    let selected = null;
+
+    function submit(option) {
+      if (!verificationId) {
+        alert("Missing verification session.");
+        return;
+      }
+      const payload = JSON.stringify({
+        verificationId,
+        optionId: option.id,
+        optionLabel: option.label,
+      });
+      if (tg) {
+        tg.sendData(payload);
+      } else {
+        console.log("Dev mode payload:", payload);
+        alert("Selected: " + option.label + " (open inside Telegram to submit)");
+      }
+    }
+
+    OPTIONS.forEach((opt) => {
+      const el = document.createElement("div");
+      el.className = "option";
+      el.innerHTML =
+        '<div class="opt-label">' + opt.label + '</div>' +
+        '<div class="opt-desc">' + opt.description + '</div>';
+      el.onclick = () => {
+        document.querySelectorAll(".option").forEach((n) => n.classList.remove("selected"));
+        el.classList.add("selected");
+        selected = opt;
+        submit(opt);
+      };
+      container.appendChild(el);
+    });
+
+    if (tg?.MainButton) {
+      tg.MainButton.setText("Confirm selection");
+      tg.MainButton.hide();
+    }
+  </script>
+</body>
+</html>

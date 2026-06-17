@@ -1,21 +1,23 @@
 import type { Api } from "grammy";
-import type { User } from "@grammyjs/types";
 import { InlineKeyboard } from "grammy";
 
 import { getTopBidForGroup } from "@/adapters/bidding.js";
 import type { GroupRow } from "@/adapters/groups.adapter.js";
 import {
   createVerification,
+  getVerificationByToken,
   type VerificationEntryType,
   type VerificationRow,
   transitionState,
 } from "@/adapters/verification.adapter.js";
+import { getCaptchaById } from "@/services/captcha-questions.js";
 import {
-  getCaptchaById,
-  pickRandomCaptcha,
-} from "@/services/captcha-questions.js";
+  resolveVerificationTask,
+  TaskType,
+  type ResolvedVerificationTask,
+} from "@/services/verification-tasks.js";
 import { VerificationState } from "@/services/verification-states.js";
-import { sendCaptchaDm } from "@/telegram/services/captcha-dm.js";
+import { sendVerificationTaskDm } from "@/telegram/services/captcha-dm.js";
 import { sendWelcomeGateMessage } from "@/telegram/services/welcome-gate.js";
 import { restrictUserForCaptcha } from "@/telegram/verification-actions.js";
 import { logger } from "@/utils/logger.js";
@@ -25,15 +27,34 @@ export interface BeginVerificationResult {
   captchaSentInDm: boolean;
 }
 
+function taskToTransitionExtra(task: ResolvedVerificationTask) {
+  return {
+    taskType: task.taskType,
+    taskPayload: task.payload,
+    captchaQuestionId: task.captchaQuestionId,
+    captchaCorrectOption: task.captchaCorrectOption,
+  };
+}
+
+function rebuildTaskFromVerification(verification: VerificationRow): ResolvedVerificationTask | null {
+  if (!verification.taskType || !verification.taskPayload) return null;
+  return {
+    taskType: verification.taskType as TaskType,
+    payload: verification.taskPayload as ResolvedVerificationTask["payload"],
+    captchaQuestionId: verification.captchaQuestionId ?? undefined,
+    captchaCorrectOption: verification.captchaCorrectOption ?? undefined,
+  };
+}
+
 export async function beginVerification(
   api: Api,
-  user: User,
+  user: { id: number; first_name: string },
   group: GroupRow,
   groupTitle: string,
   entryType: VerificationEntryType,
 ): Promise<BeginVerificationResult> {
   const topBid = await getTopBidForGroup(group.groupId);
-  const captcha = pickRandomCaptcha();
+  const task = resolveVerificationTask(group, topBid);
   const verification = await createVerification({
     tgUserId: BigInt(user.id),
     groupId: group.groupId,
@@ -43,8 +64,7 @@ export async function beginVerification(
 
   await transitionState(verification.verificationId, VerificationState.TASK_SENT, {
     lockedBidPrice: topBid?.bidPerVerification ?? undefined,
-    captchaQuestionId: captcha.id,
-    captchaCorrectOption: captcha.correctOptionId,
+    ...taskToTransitionExtra(task),
   });
 
   const me = await api.getMe();
@@ -62,22 +82,22 @@ export async function beginVerification(
       verification.verificationId,
       botUsername,
     );
-    captchaSentInDm = await sendCaptchaDm(
+    captchaSentInDm = await sendVerificationTaskDm(
       api,
       user.id,
       verification.verificationId,
-      captcha,
+      task,
       groupTitle,
     );
     if (!captchaSentInDm) {
       await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
     }
   } else {
-    captchaSentInDm = await sendCaptchaDm(
+    captchaSentInDm = await sendVerificationTaskDm(
       api,
       user.id,
       verification.verificationId,
-      captcha,
+      task,
       groupTitle,
     );
     if (!captchaSentInDm) {
@@ -102,7 +122,7 @@ export async function beginVerification(
       groupId: group.groupId,
       tgUserId: user.id,
       entryType,
-      captchaId: captcha.id,
+      taskType: task.taskType,
       captchaSentInDm,
     },
     "Verification started",
@@ -111,18 +131,42 @@ export async function beginVerification(
   return { verification, captchaSentInDm };
 }
 
+export async function resendVerificationDm(
+  api: Api,
+  userId: number,
+  verificationId: string,
+  groupTitle: string,
+): Promise<boolean> {
+  const verification = await getVerificationByToken(verificationId);
+  if (!verification) return false;
+
+  let task = rebuildTaskFromVerification(verification);
+  if (!task && verification.captchaQuestionId) {
+    const captcha = getCaptchaById(verification.captchaQuestionId);
+    if (!captcha) return false;
+    task = {
+      taskType: TaskType.TRIVIA_MC,
+      payload: {
+        prompt: captcha.prompt,
+        options: captcha.options,
+        correctOptionId: captcha.correctOptionId,
+        questionId: captcha.id,
+      },
+      captchaQuestionId: captcha.id,
+      captchaCorrectOption: captcha.correctOptionId,
+    };
+  }
+  if (!task) return false;
+
+  return sendVerificationTaskDm(api, userId, verificationId, task, groupTitle);
+}
+
+/** @deprecated Use resendVerificationDm */
 export async function resendCaptchaDm(
   api: Api,
   userId: number,
   verificationId: string,
   groupTitle: string,
 ): Promise<boolean> {
-  const { getVerificationByToken } = await import("@/adapters/verification.adapter.js");
-  const verification = await getVerificationByToken(verificationId);
-  if (!verification?.captchaQuestionId) return false;
-
-  const captcha = getCaptchaById(verification.captchaQuestionId);
-  if (!captcha) return false;
-
-  return sendCaptchaDm(api, userId, verificationId, captcha, groupTitle);
+  return resendVerificationDm(api, userId, verificationId, groupTitle);
 }

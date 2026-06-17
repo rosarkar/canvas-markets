@@ -61,11 +61,4 @@ export function registerStartHandler(bot: Bot): void {
         "Advertisers: send /buy",
     );
   });
-
-  bot.command("buy", async (ctx) => {
-    await ctx.reply(
-      "Advertiser buy flow — coming in next build step.\n\n" +
-        "You'll select groups, set bid per verification, and fund escrow.",
-    );
-  });
 }

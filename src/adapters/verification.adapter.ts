@@ -174,6 +174,22 @@ export async function getActiveVerificationForUser(
   return mapRow(res.rows[0]);
 }
 
+/** Active verification awaiting an "I agree" reply to the group's rules gate. */
+export async function getActiveRulesGateVerificationForUser(
+  tgUserId: bigint,
+): Promise<VerificationRow | null> {
+  const res = await db.query(
+    `SELECT * FROM verifications
+     WHERE tg_user_id = $1
+       AND state = 'RULES_SENT'
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY created_at DESC LIMIT 1`,
+    [tgUserId.toString()],
+  );
+  if (!res.rows[0]) return null;
+  return mapRow(res.rows[0]);
+}
+
 /** Active verification awaiting a DM text reply (open_text, rank_reasoning, binary_reasoning tasks). */
 export async function getActiveDmVerificationForUser(
   tgUserId: bigint,
@@ -224,7 +240,7 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
      SET state = 'TIMED_OUT', updated_at = NOW()
      FROM groups g
      WHERE v.group_id = g.group_id
-       AND v.state IN ('DEEP_LINK_SENT', 'TASK_SENT')
+       AND v.state IN ('DEEP_LINK_SENT', 'RULES_SENT', 'TASK_SENT')
        AND v.expires_at < NOW()
      RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id, v.entry_type`,
   );

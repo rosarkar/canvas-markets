@@ -12,6 +12,7 @@ export interface GroupRow {
   registeredAt: Date;
   lastWelcomeMessageId: bigint | null;
   portalInviteLink: string | null;
+  rules: string[];
 }
 
 function mapGroup(r: Record<string, unknown>): GroupRow {
@@ -29,6 +30,7 @@ function mapGroup(r: Record<string, unknown>): GroupRow {
         ? BigInt(r.last_welcome_message_id as string | bigint)
         : null,
     portalInviteLink: (r.portal_invite_link as string | null) ?? null,
+    rules: (r.rules as string[] | null) ?? [],
   };
 }
 
@@ -110,6 +112,13 @@ export async function updatePortalInviteLink(
   await db.query(`UPDATE groups SET portal_invite_link = $2 WHERE group_id = $1`, [
     groupId,
     inviteLink,
+  ]);
+}
+
+export async function updateGroupRules(groupId: number, rules: string[]): Promise<void> {
+  await db.query(`UPDATE groups SET rules = $2 WHERE group_id = $1`, [
+    groupId,
+    JSON.stringify(rules),
   ]);
 }
 

@@ -13,6 +13,7 @@ import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js"
 import { registerLinkHandler } from "@/telegram/handlers/link.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerRegisterHandler } from "@/telegram/handlers/register.js";
+import { registerRulesSetupHandler } from "@/telegram/handlers/rules-setup.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
 import { registerAgentOfferSkipHandler } from "@/telegram/services/captcha-dm.js";
 import { advertiserRouter } from "@/api/advertiser.js";
@@ -32,6 +33,7 @@ export function startTelegramBot(): void {
 
   registerStartHandler(bot);
   registerRegisterHandler(bot);
+  registerRulesSetupHandler(bot);
   registerBuyHandler(bot);
   registerLinkHandler(bot);
   registerJoinHandler(bot);

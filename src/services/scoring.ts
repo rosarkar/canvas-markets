@@ -34,6 +34,45 @@ export interface ScoreResult {
   method: "kimi" | "keyword" | "manual";
 }
 
+export interface KimiMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/**
+ * Low-level Kimi chat-completion call shared by scoring and the rules-setup
+ * assistant — the one place that owns the actual HTTP request/auth.
+ * Throws on any failure; callers decide their own fallback.
+ */
+export async function callKimi(
+  messages: KimiMessage[],
+  options?: { temperature?: number; timeoutMs?: number },
+): Promise<string> {
+  if (!config.kimi.apiKey) {
+    throw new Error("KIMI_API_KEY not set");
+  }
+
+  const res = await fetch(`${config.kimi.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.kimi.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.kimi.model,
+      messages,
+      temperature: options?.temperature ?? 0,
+    }),
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 8000),
+  });
+
+  if (!res.ok) throw new Error(`Kimi HTTP ${res.status}`);
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Kimi returned no content");
+  return content;
+}
+
 /** Keyword fallback: ≥2 domain terms from curated list. */
 export function scoreWithKeywords(taskText: string, responseText: string): ScoreResult {
   const combined = `${taskText} ${responseText}`.toLowerCase();
@@ -56,28 +95,13 @@ export async function scoreWithKimi(taskText: string, responseText: string): Pro
   const userMessage = `Question: ${taskText}\n\nResponse: ${responseText}`;
 
   try {
-    const res = await fetch(`${config.kimi.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.kimi.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: config.kimi.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0,
-      }),
-      signal: AbortSignal.timeout(3000),
-    });
-
-    if (!res.ok) throw new Error(`Kimi HTTP ${res.status}`);
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const content = data.choices?.[0]?.message?.content ?? "";
+    const content = await callKimi(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      { temperature: 0, timeoutMs: 3000 },
+    );
     const parsed = JSON.parse(content) as { score?: number };
     const score = Math.max(0, Math.min(100, Math.round(parsed.score ?? 0)));
     return { score, method: "kimi" };

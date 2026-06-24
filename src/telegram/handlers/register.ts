@@ -5,8 +5,10 @@ import {
   getGroupsByOwnerTgId,
   registerGroup,
   updateOwnerWallet,
+  type GroupRow,
 } from "@/adapters/groups.adapter.js";
 import { createPortalInviteLink } from "@/telegram/services/portal-invite.js";
+import { startRulesSetup } from "@/telegram/handlers/rules-setup.js";
 import { config } from "@/config/index.js";
 import { logger } from "@/utils/logger.js";
 
@@ -59,6 +61,21 @@ async function replyWithPortalLink(bot: Bot, chatId: number, extra = ""): Promis
       "\n\nOpen invite links still work: new members are muted until they verify via DM.",
     { parse_mode: "Markdown" },
   );
+}
+
+/** Triggers the AI-assisted rules conversation once a group has a real wallet and no rules yet. */
+async function maybeStartRulesSetup(
+  bot: Bot,
+  ownerTgId: number,
+  group: GroupRow,
+  groupTitle: string,
+): Promise<void> {
+  if (group.ownerWallet === PLACEHOLDER_WALLET || group.rules.length > 0) return;
+  try {
+    await startRulesSetup(bot.api, ownerTgId, group, groupTitle);
+  } catch (err) {
+    logger.warn({ err, groupId: group.groupId }, "Failed to start rules setup");
+  }
 }
 
 export function registerRegisterHandler(bot: Bot): void {
@@ -151,6 +168,8 @@ export function registerRegisterHandler(bot: Bot): void {
     } catch {
       /* Owner hasn't started the bot in DM yet — they'll see the group message */
     }
+
+    await maybeStartRulesSetup(bot, fromId, group, title ?? "your group");
   });
 
   bot.command("invite", async (ctx) => {
@@ -270,6 +289,20 @@ export function registerRegisterHandler(bot: Bot): void {
         { parse_mode: "Markdown" },
       );
       logger.info({ ownerTgId: fromId, wallet, groupsUpdated: updated }, "Owner wallet confirmed and updated");
+
+      const groupNeedingRules = (await getGroupsByOwnerTgId(BigInt(fromId))).find(
+        (g) => g.rules.length === 0,
+      );
+      if (groupNeedingRules) {
+        let groupTitle = groupNeedingRules.groupTitle ?? "your group";
+        try {
+          const chat = await ctx.api.getChat(Number(groupNeedingRules.tgGroupId));
+          if (chat.type !== "private" && "title" in chat) groupTitle = chat.title ?? groupTitle;
+        } catch {
+          /* ignore */
+        }
+        await maybeStartRulesSetup(bot, fromId, groupNeedingRules, groupTitle);
+      }
       return;
     }
 

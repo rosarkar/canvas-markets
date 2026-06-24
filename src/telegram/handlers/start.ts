@@ -5,6 +5,7 @@ import { getGroupById } from "@/adapters/groups.adapter.js";
 import { getVerificationByToken, transitionState } from "@/adapters/verification.adapter.js";
 import { VerificationState } from "@/services/verification-states.js";
 import { resendCaptchaDm } from "@/telegram/services/begin-verification.js";
+import { sendRulesGateDm } from "@/telegram/services/captcha-dm.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerStartHandler(bot: Bot): void {
@@ -25,6 +26,7 @@ export function registerStartHandler(bot: Bot): void {
       if (
         verification.state !== VerificationState.PENDING &&
         verification.state !== VerificationState.DEEP_LINK_SENT &&
+        verification.state !== VerificationState.RULES_SENT &&
         verification.state !== VerificationState.TASK_SENT
       ) {
         await ctx.reply("This verification session is no longer active.");
@@ -37,13 +39,23 @@ export function registerStartHandler(bot: Bot): void {
         return;
       }
 
-      if (verification.state !== VerificationState.TASK_SENT) {
-        await transitionState(token, VerificationState.TASK_SENT);
-      }
-
       const chat = await ctx.api.getChat(Number(group.tgGroupId));
       const title =
         chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
+
+      if (verification.state === VerificationState.RULES_SENT) {
+        const sent = await sendRulesGateDm(ctx.api, fromId, group, title);
+        if (!sent) {
+          await ctx.reply("Could not send verification. Please try again.");
+          return;
+        }
+        logger.info({ verificationId: token, groupId: group.groupId }, "Rules gate resent via /start deep link");
+        return;
+      }
+
+      if (verification.state !== VerificationState.TASK_SENT) {
+        await transitionState(token, VerificationState.TASK_SENT);
+      }
 
       const sent = await resendCaptchaDm(ctx.api, fromId, token, title);
 

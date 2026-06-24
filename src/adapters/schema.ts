@@ -75,6 +75,7 @@ export async function createCanvasTables(): Promise<void> {
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS last_welcome_message_id BIGINT;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS portal_invite_link TEXT;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_title TEXT;
+      ALTER TABLE groups ADD COLUMN IF NOT EXISTS rules JSONB NOT NULL DEFAULT '[]'::jsonb;
       ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS template_id INT;
 
       CREATE TABLE IF NOT EXISTS task_templates (

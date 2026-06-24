@@ -2,6 +2,7 @@ import type { Api, Bot } from "grammy";
 import { InlineKeyboard } from "grammy";
 
 import { config } from "@/config/index.js";
+import type { GroupRow } from "@/adapters/groups.adapter.js";
 import { buildCaptchaCallbackData } from "@/services/captcha-questions.js";
 import {
   TaskType,
@@ -75,6 +76,28 @@ function formatBinaryReasoningPrompt(payload: BinaryReasoningPayload): string {
     "_Reply with A or B, then add one sentence on why._",
   ];
   return lines.join("\n");
+}
+
+/** Shown before the captcha task when a group has configured rules. */
+export async function sendRulesGateDm(
+  api: Api,
+  userId: number,
+  group: GroupRow,
+  groupTitle: string,
+): Promise<boolean> {
+  const lines = [
+    `📜 **${groupTitle}** — group rules`,
+    "",
+    ...group.rules.map((rule, i) => `${i + 1}. ${rule}`),
+    "",
+    "Type **I agree** to continue.",
+  ];
+  try {
+    await api.sendMessage(userId, lines.join("\n"), { parse_mode: "Markdown" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function sendVerificationTaskDm(

@@ -2,6 +2,7 @@
 export const VerificationState = {
   PENDING: "PENDING",
   DEEP_LINK_SENT: "DEEP_LINK_SENT",
+  RULES_SENT: "RULES_SENT",
   TASK_SENT: "TASK_SENT",
   RESPONSE_RECEIVED: "RESPONSE_RECEIVED",
   STEP1_FIRED: "STEP1_FIRED",
@@ -16,8 +17,9 @@ export const VerificationState = {
 
 export type VerificationState = (typeof VerificationState)[keyof typeof VerificationState];
 
-/** Bid price locks when TASK_SENT is written. */
+/** Bid price locks when TASK_SENT is written (or RULES_SENT, if a rules gate comes first). */
 export const BID_LOCK_STATES: VerificationState[] = [
+  VerificationState.RULES_SENT,
   VerificationState.TASK_SENT,
   VerificationState.RESPONSE_RECEIVED,
   VerificationState.STEP1_FIRED,

@@ -115,12 +115,14 @@ export async function transitionState(
     captchaCorrectOption?: string;
     taskType?: string;
     taskPayload?: unknown;
+    /** Added on top of locked_bid_price — e.g. a quality bonus for reasoned binary replies. */
+    bonusMicroUnits?: bigint;
   },
 ): Promise<void> {
   await db.query(
     `UPDATE verifications
      SET state = $2,
-         locked_bid_price = COALESCE($3, locked_bid_price),
+         locked_bid_price = COALESCE($3, locked_bid_price) + COALESCE($10, 0),
          response_text = COALESCE($4, response_text),
          kimi_score = COALESCE($5, kimi_score),
          captcha_question_id = COALESCE($6, captcha_question_id),
@@ -139,6 +141,7 @@ export async function transitionState(
       extra?.captchaCorrectOption ?? null,
       extra?.taskType ?? null,
       extra?.taskPayload != null ? JSON.stringify(extra.taskPayload) : null,
+      extra?.bonusMicroUnits?.toString() ?? null,
     ],
   );
 
@@ -146,6 +149,14 @@ export async function transitionState(
   if (row && COOLDOWN_STATES.includes(newState)) {
     await setCooldown(row.tgUserId, row.groupId);
   }
+}
+
+/** Bump attempt_count after sending a one-shot re-prompt for a thin/incomplete reply. */
+export async function bumpAttemptCount(verificationId: string): Promise<void> {
+  await db.query(
+    `UPDATE verifications SET attempt_count = attempt_count + 1, updated_at = NOW() WHERE verification_id = $1`,
+    [verificationId],
+  );
 }
 
 export async function getActiveVerificationForUser(
@@ -163,7 +174,7 @@ export async function getActiveVerificationForUser(
   return mapRow(res.rows[0]);
 }
 
-/** Active verification awaiting a DM text reply (open_text tasks). */
+/** Active verification awaiting a DM text reply (open_text, rank_reasoning, binary_reasoning tasks). */
 export async function getActiveDmVerificationForUser(
   tgUserId: bigint,
 ): Promise<VerificationRow | null> {
@@ -171,7 +182,7 @@ export async function getActiveDmVerificationForUser(
     `SELECT * FROM verifications
      WHERE tg_user_id = $1
        AND state IN ('TASK_SENT', 'DEEP_LINK_SENT')
-       AND task_type = 'open_text'
+       AND task_type IN ('open_text', 'rank_reasoning', 'binary_reasoning')
        AND (expires_at IS NULL OR expires_at > NOW())
      ORDER BY created_at DESC LIMIT 1`,
     [tgUserId.toString()],

@@ -3,6 +3,7 @@ import { InlineKeyboard } from "grammy";
 
 import { getTopBidForGroup } from "@/adapters/bidding.js";
 import type { GroupRow } from "@/adapters/groups.adapter.js";
+import { getTemplateById } from "@/adapters/templates.adapter.js";
 import {
   createVerification,
   getVerificationByToken,
@@ -54,7 +55,8 @@ export async function beginVerification(
   entryType: VerificationEntryType,
 ): Promise<BeginVerificationResult> {
   const topBid = await getTopBidForGroup(group.groupId);
-  const task = resolveVerificationTask(group, topBid);
+  const template = topBid?.templateId ? await getTemplateById(topBid.templateId) : null;
+  const task = resolveVerificationTask(group, topBid, template);
   const verification = await createVerification({
     tgUserId: BigInt(user.id),
     groupId: group.groupId,

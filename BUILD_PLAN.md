@@ -1,7 +1,7 @@
 # Canvas Protocol — Build Plan
 
 > Migrated from basemate-v2 (Telegram infra + bidding patterns). Product spec: `matthewmeakin-unknown-design-20260531-224711.md`.
-> Last updated: Jun 17, 2026 — implementation sprint (P0 complete, dashboards live)
+> Last updated: Jun 24, 2026 — captcha template system (advertiser-selectable formats)
 
 ## What Canvas Is
 
@@ -13,6 +13,20 @@ A two-sided marketplace on Telegram: **group owners** earn USDC per verified joi
 ---
 
 ## Update Log
+
+### Jun 24, 2026 — Captcha Template System
+
+**Completed this session:**
+
+- **Two new advertiser formats** — `rank_reasoning` (rank N items + one sentence on the top pick, one-shot re-prompt if reasoning is missing) and `binary_reasoning` (A/B + reasoning in one reply, with an optional USDC quality bonus added on top of the payout for a thoughtful answer).
+- **`preference_mc` extended** — optional `sponsorName` tag ("Sponsored by X · no wrong answer") and a post-pass "agent offer" follow-up (CTA button + skip), matching the ad-style mockups (Moonwell/Ticketmaster/Coinbase examples).
+- **`/buy` rebuilt as a template conversation** — after group → quantity → bid, advertisers either reuse a saved template or pick a format and get walked field-by-field through customizing it (prompt, then options/items via "send one per message, then `done`", then optional sponsor/offer/bonus). Saved as a named, reusable row in `task_templates`.
+- **Completed Mateo's dormant template infra** — `task_templates` table and `advertiser_budgets.template_id` column already existed in the schema but had zero application code using them; now fully wired through the resolver → DM rendering → scoring pipeline.
+- **One-shot re-prompt mechanic** — reused the previously-unused `verifications.attempt_count` column to gate exactly one re-prompt per verification when a reply is too thin (`open_text`) or missing required structure (ranking / reasoning).
+- **Schema simplification** — removed the DB-level `CHECK` constraint on `task_templates.task_type` (it required a migration every time a new template type shipped). Validation now lives in `templates.adapter.ts` against the `TaskType` union instead — adding a future format no longer needs a migration.
+- **Verified against a real (in-memory) Postgres engine** — confirmed an advertiser with zero prior signup (no `/link`, no row in `advertisers`) can complete the full flow end-to-end, and that `templateId` round-trips correctly from bid placement through join-time task resolution.
+- **Scope note:** the source mockup (`canvas_captcha_examples.html`) showed 6 formats; rules-acceptance and auto-kick enforcement were intentionally not built here — the mockup itself tags them "no advertiser required" (group-owner moderation features, not something an advertiser picks/pays for), and auto-kick would need spam-detection infra that doesn't exist yet.
+- **Payments still not wired into this flow** — `/buy` writes `remaining_budget` as a ledger number in Postgres only; no USDC moves at bid time. Confirms the existing P1 financial-rail gap below, doesn't change it.
 
 ### Jun 17, 2026 — Implementation Sprint (P0 complete, dashboards live)
 
@@ -68,14 +82,16 @@ src/
 ├── index.ts                         # Boot: DB, schema, bot, TTL sweeper
 ├── config/
 ├── adapters/
-│   ├── schema.ts                    # Postgres DDL (groups, advertisers, verifications, bids)
+│   ├── schema.ts                    # Postgres DDL (groups, advertisers, verifications, bids, templates)
 │   ├── groups.adapter.ts            # GroupRow + getGroupOwnerStats
 │   ├── advertisers.adapter.ts       # linkAdvertiserWallet, getCampaignsForWallet
-│   ├── bidding.ts                   # placeBid (no outbid pause), getTopBidForGroup
-│   └── verification.adapter.ts      # State machine + task_type/payload
+│   ├── templates.adapter.ts         # createTemplate, getTemplateById, listTemplatesForAdvertiser
+│   ├── bidding.ts                   # placeBid (+ templateId), getTopBidForGroup
+│   └── verification.adapter.ts      # State machine + task_type/payload, bumpAttemptCount
 ├── services/
 │   ├── verification-states.ts
-│   ├── verification-tasks.ts        # Task resolver + types
+│   ├── verification-tasks.ts        # Task resolver + types (incl. rank/binary reasoning)
+│   ├── text-response-parser.ts      # Ranking/option + reasoning extraction
 │   ├── captcha-questions.ts         # Trivia fallback (10 questions)
 │   └── scoring.ts                   # Kimi + keyword fallback
 ├── api/
@@ -88,16 +104,16 @@ src/
 │   │   ├── start.ts                 # Crypto-native welcome + verify_<uuid> deep links
 │   │   ├── register.ts              # /register, /wallet (confirm UX), /invite
 │   │   ├── link.ts                  # /link — advertiser wallet
-│   │   ├── buy.ts                   # Advertiser /buy conversation + wallet prompt
-│   │   ├── captcha-callback.ts      # MC button answers
+│   │   ├── buy.ts                   # Advertiser /buy: template picker + field collection + reuse
+│   │   ├── captcha-callback.ts      # MC button answers + agent-offer follow-up
 │   │   ├── message.ts               # DM text → Kimi; web_app_data
 │   │   └── webapp-data.ts
 │   └── services/
-│       ├── begin-verification.ts    # Task resolver at join
-│       ├── captcha-dm.ts            # Send task DM by type (polished copy)
+│       ├── begin-verification.ts    # Task resolver at join (incl. saved templates)
+│       ├── captcha-dm.ts            # Send task DM by type, sponsor tag, agent offer
 │       ├── welcome-gate.ts          # Welcome gate message (polished copy)
 │       ├── verification-complete.ts # Pass/fail/timeout actions + timeout DM
-│       └── process-text-response.ts # Kimi scoring path
+│       └── process-text-response.ts # open_text/rank/binary scoring + one-shot re-prompt
 public/
 ├── advertiser/index.html            # Advertiser dashboard (wallet login → campaigns)
 ├── group-owner/index.html           # Group owner dashboard (wallet login → stats)
@@ -117,7 +133,8 @@ docs/DASHBOARD_MVP.md                # Web dashboard plan
 | Trivia MC fallback | ✅ | |
 | Advertiser `task_text` → preference MC task | ✅ | |
 | Group `verification_task_text` → open-text + Kimi | ✅ | |
-| `/buy` → group → qty → bid → task → placeBid | ✅ | Decimal parsing fixed; `/link` prompt added after buy |
+| `/buy` → group → qty → bid → template → placeBid | ✅ | Reuse a saved template or author one of 4 formats; `/link` prompt added after buy |
+| Captcha template system (`task_templates` reuse) | ✅ | 4 advertiser formats: preference_mc, rank_reasoning, binary_reasoning, open_text |
 | `/register` + `/wallet` (confirm UX) + `/invite` | ✅ | Wallet confirm keyboard; post-register owner DM |
 | `/link` — advertiser wallet | ✅ | Upsert into `advertisers` table |
 | Outbid DM notification | ✅ | Outbid campaigns stay active (no forced pause) |
@@ -138,11 +155,13 @@ docs/DASHBOARD_MVP.md                # Web dashboard plan
 | Type | When served | User UX | Scoring |
 |------|-------------|---------|---------|
 | `trivia_mc` | No advertiser, default group text | 2-button inline keyboard | Exact match |
-| `open_text` | Group fallback task | DM text reply | Kimi + keywords |
-| `preference_mc` | Advertiser `task_text` | 2–4 inline buttons with descriptions | Any selection passes (intent signal) |
+| `open_text` | Group/advertiser open-ended template | DM text reply (1 re-prompt if too thin) | Kimi + keywords |
+| `preference_mc` | Advertiser `task_text` or saved template | 2–4 inline buttons; optional sponsor tag + post-pass agent offer | Any selection passes (intent signal) |
+| `rank_reasoning` | Advertiser saved template | DM text: rank 3–6 items + one sentence on top pick (1 re-prompt if reasoning missing) | Kimi (genuineness, not ranking correctness) |
+| `binary_reasoning` | Advertiser saved template | DM text: A/B + reasoning in one reply (1 re-prompt if option/reasoning missing) | Kimi; optional USDC bonus for reasoned replies |
 | `preference_webapp` | Future / template flag | Mini App button → rich cards ([WebAppInfo](https://core.telegram.org/bots/api#webappinfo)) | Selection via sendData |
 
-**Resolver priority:** `topBid.taskText` → `group.verificationTaskText` → random trivia.
+**Resolver priority:** `topBid.templateId` (saved template) → `topBid.taskText` → `group.verificationTaskText` → random trivia.
 
 ---
 
@@ -175,7 +194,7 @@ docs/DASHBOARD_MVP.md                # Web dashboard plan
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 11 | **Advertiser sign-up + account creation** | ⚠️ Partial | Wallet-based login done (`/link` + `/advertiser` dashboard). Full account creation (Privy) deferred to Phase 2. |
-| 12 | **Captcha template picker** | ⬜ Pending | Start with 5 crypto-native templates. Long-term: prompt → AI generates captcha. |
+| 12 | **Captcha template picker** | ✅ Done (chat) | Built into `/buy` conversation, not the web dashboard — 4 formats (preference_mc, rank_reasoning, binary_reasoning, open_text), saved/reusable via `task_templates`. A visual web picker for browsing/editing templates is still open; see "drag-and-drop template editor" under deferred. Long-term: prompt → AI generates captcha (#28). |
 | 13 | **Campaign management UI** | ✅ Done | `/advertiser` dashboard: wallet login → campaign cards with bid, budget, verifications, status. |
 | 14 | **Group owner stats dashboard** | ✅ Done | `/group-owner` dashboard: wallet login → group cards with earnings, top bid, portal link. |
 | 15 | **Flow GIF / Loom on site** | ⬜ Pending | Record full advertiser flow end-to-end. Embed on advertiser landing page. |

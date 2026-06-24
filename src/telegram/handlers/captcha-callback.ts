@@ -17,6 +17,7 @@ import {
   type TriviaMcPayload,
 } from "@/services/verification-tasks.js";
 import { VerificationState } from "@/services/verification-states.js";
+import { sendAgentOfferFollowUp } from "@/telegram/services/captcha-dm.js";
 import {
   completeVerificationFail,
   completeVerificationPass,
@@ -117,6 +118,11 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
           : `✅ You're in! You can now chat in **${groupTitle}**.`;
 
       await ctx.reply(successMsg, { parse_mode: "Markdown" });
+
+      if (payload && taskType === TaskType.PREFERENCE_MC) {
+        await sendAgentOfferFollowUp(ctx.api, Number(verification.tgUserId), { taskType, payload });
+      }
+
       logger.info(
         { verificationId, groupId: group.groupId, entryType: verification.entryType, taskType },
         "User passed MC verification (DM)",

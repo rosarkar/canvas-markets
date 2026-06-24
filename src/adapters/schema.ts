@@ -81,13 +81,18 @@ export async function createCanvasTables(): Promise<void> {
         template_id           SERIAL PRIMARY KEY,
         advertiser_tg_id      BIGINT,
         name                  TEXT NOT NULL,
-        task_type             TEXT NOT NULL
-          CHECK (task_type IN ('open_text', 'trivia_mc', 'preference_mc', 'preference_webapp')),
+        task_type             TEXT NOT NULL,
         payload               JSONB NOT NULL,
         preview_image_url     TEXT,
         created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- task_type used to be DB-enforced via CHECK, which meant a migration every time a new
+      -- template type shipped. Validation now lives in createTemplate() against the TaskType
+      -- union instead — drop the old constraint (best-effort; Postgres' default name for an
+      -- unnamed single-column CHECK) so it doesn't block newer types like rank_reasoning.
+      ALTER TABLE task_templates DROP CONSTRAINT IF EXISTS task_templates_task_type_check;
 
       CREATE TABLE IF NOT EXISTS advertisers (
         tg_id                 BIGINT PRIMARY KEY,

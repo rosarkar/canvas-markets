@@ -7,6 +7,7 @@ export interface TopBid {
   remainingBudget: bigint;
   taskText: string | null;
   advertiserTgId: bigint | null;
+  templateId: number | null;
 }
 
 /** First-price auction: highest active bid with remaining budget wins. */
@@ -17,7 +18,8 @@ export async function getTopBidForGroup(groupId: number): Promise<TopBid | null>
             bid_per_verification AS "bidPerVerification",
             remaining_budget AS "remainingBudget",
             task_text AS "taskText",
-            advertiser_tg_id AS "advertiserTgId"
+            advertiser_tg_id AS "advertiserTgId",
+            template_id AS "templateId"
      FROM advertiser_budgets
      WHERE group_id = $1
        AND campaign_status = 'active'
@@ -35,6 +37,7 @@ export async function getTopBidForGroup(groupId: number): Promise<TopBid | null>
     remainingBudget: BigInt(row.remainingBudget as string | bigint),
     taskText: row.taskText as string | null,
     advertiserTgId: row.advertiserTgId != null ? BigInt(row.advertiserTgId as string | bigint) : null,
+    templateId: row.templateId != null ? Number(row.templateId) : null,
   };
 }
 
@@ -44,6 +47,7 @@ export async function placeBid(input: {
   bidMicroUnits: bigint;
   quantity: number;
   taskText?: string;
+  templateId?: number;
 }): Promise<{ advertiserId: number; displacedAdvertiserTgId: bigint | null }> {
   const client = await db.connect();
   try {
@@ -62,8 +66,8 @@ export async function placeBid(input: {
     const totalBudget = input.bidMicroUnits * BigInt(input.quantity);
     const insert = await client.query<{ advertiser_id: number }>(
       `INSERT INTO advertiser_budgets
-         (group_id, bid_per_verification, remaining_budget, task_text, advertiser_tg_id, campaign_status)
-       VALUES ($1, $2, $3, $4, $5, 'active')
+         (group_id, bid_per_verification, remaining_budget, task_text, advertiser_tg_id, template_id, campaign_status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')
        RETURNING advertiser_id`,
       [
         input.groupId,
@@ -71,6 +75,7 @@ export async function placeBid(input: {
         totalBudget.toString(),
         input.taskText ?? null,
         input.advertiserTgId.toString(),
+        input.templateId ?? null,
       ],
     );
     const advertiserId = insert.rows[0]!.advertiser_id;

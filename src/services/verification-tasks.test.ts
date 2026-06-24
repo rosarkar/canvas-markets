@@ -5,8 +5,10 @@ import type { GroupRow } from "../adapters/groups.adapter.js";
 import {
   defaultPreferenceTask,
   isPassingMcAnswer,
+  labelOptions,
   resolveVerificationTask,
   TaskType,
+  type BinaryReasoningPayload,
 } from "./verification-tasks.js";
 
 const baseGroup: GroupRow = {
@@ -30,6 +32,7 @@ describe("resolveVerificationTask", () => {
       remainingBudget: 3_500_000n,
       taskText: "Would you use Moonwell or Aerodrome?",
       advertiserTgId: 99n,
+      templateId: null,
     };
     const task = resolveVerificationTask(baseGroup, topBid);
     expect(task.taskType).toBe(TaskType.PREFERENCE_MC);
@@ -57,6 +60,42 @@ describe("resolveVerificationTask", () => {
     const task = resolveVerificationTask(group, null);
     expect(task.taskType).toBe(TaskType.TRIVIA_MC);
     expect(task.captchaQuestionId).toBeTruthy();
+  });
+
+  it("prefers a saved template over advertiser task_text", () => {
+    const topBid: TopBid = {
+      advertiserId: 1,
+      groupId: 1,
+      bidPerVerification: 350_000n,
+      remainingBudget: 3_500_000n,
+      taskText: "Would you use Moonwell or Aerodrome?",
+      advertiserTgId: 99n,
+      templateId: 7,
+    };
+    const payload: BinaryReasoningPayload = {
+      prompt: "Would you use an AI agent to audit your smart contract?",
+      options: labelOptions([{ label: "Yes" }, { label: "No" }]) as [
+        ReturnType<typeof labelOptions>[number],
+        ReturnType<typeof labelOptions>[number],
+      ],
+    };
+    const task = resolveVerificationTask(baseGroup, topBid, {
+      taskType: TaskType.BINARY_REASONING,
+      payload,
+    });
+    expect(task.taskType).toBe(TaskType.BINARY_REASONING);
+    expect((task.payload as BinaryReasoningPayload).prompt).toBe(payload.prompt);
+  });
+});
+
+describe("labelOptions", () => {
+  it("assigns sequential a/b/c ids and preserves descriptions", () => {
+    const options = labelOptions([
+      { label: "Front row at a sold-out arena" },
+      { label: "Smaller venue", description: "I already know all the words" },
+    ]);
+    expect(options.map((o) => o.id)).toEqual(["a", "b"]);
+    expect(options[1]!.description).toBe("I already know all the words");
   });
 });
 

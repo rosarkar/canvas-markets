@@ -1,12 +1,14 @@
-import type { Api } from "grammy";
+import type { Api, Bot } from "grammy";
 import { InlineKeyboard } from "grammy";
 
 import { config } from "@/config/index.js";
 import { buildCaptchaCallbackData } from "@/services/captcha-questions.js";
 import {
   TaskType,
+  type BinaryReasoningPayload,
   type PreferenceMcPayload,
   type PreferenceWebAppPayload,
+  type RankReasoningPayload,
   type ResolvedVerificationTask,
   type TriviaMcPayload,
 } from "@/services/verification-tasks.js";
@@ -44,6 +46,34 @@ function formatPreferencePrompt(payload: PreferenceMcPayload): string {
       lines.push(`• **${opt.label}**`);
     }
   }
+  if (payload.sponsorName) {
+    lines.push("", `_Sponsored by ${payload.sponsorName} — no wrong answer_`);
+  }
+  return lines.join("\n");
+}
+
+function formatRankReasoningPrompt(payload: RankReasoningPayload): string {
+  const letters = payload.items.map((item, i) => String.fromCharCode(65 + i));
+  const exampleOrder = [...letters].reverse().join(", ");
+  const lines = [
+    payload.prompt,
+    "",
+    ...payload.items.map((item, i) => `${letters[i]}. ${item.label}${item.description ? ` — ${item.description}` : ""}`),
+    "",
+    `_Reply with your order (e.g. ${exampleOrder}), then add one sentence on your top pick._`,
+  ];
+  return lines.join("\n");
+}
+
+function formatBinaryReasoningPrompt(payload: BinaryReasoningPayload): string {
+  const letters = ["A", "B"];
+  const lines = [
+    payload.prompt,
+    "",
+    ...payload.options.map((opt, i) => `${letters[i]}. ${opt.label}`),
+    "",
+    "_Reply with A or B, then add one sentence on why._",
+  ];
   return lines.join("\n");
 }
 
@@ -65,6 +95,22 @@ export async function sendVerificationTaskDm(
           `${header}${payload.prompt}\n\n_Reply with your answer — a sentence or two is enough._`,
           { parse_mode: "Markdown" },
         );
+        return true;
+      }
+
+      case TaskType.RANK_REASONING: {
+        const payload = task.payload as RankReasoningPayload;
+        await api.sendMessage(userId, `${header}${formatRankReasoningPrompt(payload)}`, {
+          parse_mode: "Markdown",
+        });
+        return true;
+      }
+
+      case TaskType.BINARY_REASONING: {
+        const payload = task.payload as BinaryReasoningPayload;
+        await api.sendMessage(userId, `${header}${formatBinaryReasoningPrompt(payload)}`, {
+          parse_mode: "Markdown",
+        });
         return true;
       }
 
@@ -137,6 +183,40 @@ export async function sendCaptchaDm(
     },
     groupTitle,
   );
+}
+
+/** After a preference_mc pass, offer the advertiser's follow-up CTA (or skip) if the template has one. */
+export async function sendAgentOfferFollowUp(
+  api: Api,
+  userId: number,
+  task: ResolvedVerificationTask,
+): Promise<void> {
+  if (task.taskType !== TaskType.PREFERENCE_MC) return;
+  const offer = (task.payload as PreferenceMcPayload).agentOffer;
+  if (!offer) return;
+
+  const keyboard = new InlineKeyboard().url(offer.ctaLabel, offer.ctaUrl).text("Skip", "offer:skip");
+  try {
+    await api.sendMessage(userId, offer.message, { reply_markup: keyboard });
+  } catch {
+    /* user may have blocked the bot */
+  }
+}
+
+/** Dismisses the agent-offer keyboard when the user taps "Skip". */
+export function registerAgentOfferSkipHandler(bot: Bot): void {
+  bot.on("callback_query:data", async (ctx, next) => {
+    if (ctx.callbackQuery.data !== "offer:skip") {
+      await next();
+      return;
+    }
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageReplyMarkup();
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
 export async function getGroupInviteLink(api: Api, chatId: number): Promise<string | null> {

@@ -15,7 +15,7 @@ import {
   completeVerificationFail,
   completeVerificationPass,
 } from "@/telegram/services/verification-complete.js";
-import { processOpenTextResponse } from "@/telegram/services/process-text-response.js";
+import { processTextVerificationResponse } from "@/telegram/services/process-text-response.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerMessageHandler(bot: Bot): void {
@@ -94,9 +94,14 @@ async function handleDmTextResponse(
   const groupTitle =
     chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
 
-  const { passed } = await processOpenTextResponse(ctx.api, verification, text);
+  const result = await processTextVerificationResponse(ctx.api, verification, text);
 
-  if (passed) {
+  if (result.outcome === "re_prompted") {
+    // Re-prompt message was already sent inside processTextVerificationResponse.
+    return true;
+  }
+
+  if (result.outcome === "passed") {
     await ctx.reply(
       verification.entryType === "join_request"
         ? `✅ You're in! Your join request for **${groupTitle}** has been approved.`

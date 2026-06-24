@@ -2,6 +2,7 @@ import type { Api } from "grammy";
 
 import type { GroupRow } from "@/adapters/groups.adapter.js";
 import type { VerificationRow } from "@/adapters/verification.adapter.js";
+import { releaseEscrowPayout } from "@/services/escrow.js";
 import {
   admitUser,
   approveJoinRequest,
@@ -29,15 +30,23 @@ export async function completeVerificationPass(
       { verificationId: verification.verificationId, groupId: group.groupId },
       "Join request approved after captcha pass",
     );
-    return;
+  } else {
+    await admitUser(api, chatId, userId);
+    await deleteWelcomeGateMessage(api, chatId, group.groupId);
+    logger.info(
+      { verificationId: verification.verificationId, groupId: group.groupId },
+      "User admitted after captcha pass (open join)",
+    );
   }
 
-  await admitUser(api, chatId, userId);
-  await deleteWelcomeGateMessage(api, chatId, group.groupId);
-  logger.info(
-    { verificationId: verification.verificationId, groupId: group.groupId },
-    "User admitted after captcha pass (open join)",
-  );
+  // Fire-and-forget escrow payout — does not block user admission
+  if (verification.advertiserId != null && verification.lockedBidPrice != null) {
+    void releaseEscrowPayout(
+      verification.advertiserId,
+      group.ownerWallet,
+      verification.lockedBidPrice,
+    );
+  }
 }
 
 export async function completeVerificationFail(

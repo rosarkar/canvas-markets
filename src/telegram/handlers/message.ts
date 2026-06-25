@@ -10,6 +10,7 @@ import {
   transitionState,
 } from "@/adapters/verification.adapter.js";
 import { VerificationState } from "@/services/verification-states.js";
+import { hasActiveBuyAgentSession } from "@/telegram/handlers/buy-agent.js";
 import { hasActiveBuySession } from "@/telegram/handlers/buy.js";
 import { hasActiveRulesSession } from "@/telegram/handlers/rules-setup.js";
 import { parseWebAppData } from "@/telegram/handlers/webapp-data.js";
@@ -40,7 +41,11 @@ export function registerMessageHandler(bot: Bot): void {
 
     // Rules-gate "I agree" / open-text verification replies in DM
     if (chat.type === "private" && ctx.message.text && !ctx.message.text.startsWith("/")) {
-      if (!hasActiveBuySession(from.id) && !hasActiveRulesSession(from.id)) {
+      if (
+        !hasActiveBuySession(from.id) &&
+        !hasActiveBuyAgentSession(from.id) &&
+        !hasActiveRulesSession(from.id)
+      ) {
         const text = ctx.message.text.trim();
         const handledRules = await handleRulesAgreementResponse(ctx, text);
         if (handledRules) return;

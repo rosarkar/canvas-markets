@@ -6,7 +6,7 @@ import { Bot, webhookCallback } from "grammy";
 
 import { config } from "@/config/index.js";
 import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
-import { registerBuyHandler } from "@/telegram/handlers/buy.js";
+import { registerBuyAgentHandler } from "@/telegram/handlers/buy-agent.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js";
@@ -34,7 +34,11 @@ export function startTelegramBot(): void {
   registerStartHandler(bot);
   registerRegisterHandler(bot);
   registerRulesSetupHandler(bot);
-  registerBuyHandler(bot);
+  // Conversational Kimi-powered buy agent is the primary /buy entry point.
+  // buy.ts (the old button/field-collector flow) is intentionally left unregistered
+  // here so it can't shadow or double-fire on the same command — its code stays in
+  // the repo, just dormant.
+  registerBuyAgentHandler(bot);
   registerLinkHandler(bot);
   registerJoinHandler(bot);
   registerJoinRequestHandler(bot);

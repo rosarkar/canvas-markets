@@ -57,13 +57,13 @@ export function hasActiveBuySession(userId: number): boolean {
   return sessions.has(userId);
 }
 
-const MIN_QUANTITY = 10;
+export const MIN_QUANTITY = 10;
 
-function formatUsd(micro: bigint): string {
+export function formatUsd(micro: bigint): string {
   return `$${fromMicroUnits(micro).toFixed(2)}`;
 }
 
-const FORMAT_LABELS: Record<TaskType, string> = {
+export const FORMAT_LABELS: Record<TaskType, string> = {
   [TaskType.PREFERENCE_MC]: "Multiple choice (no wrong answer)",
   [TaskType.RANK_REASONING]: "Ranked choice + reasoning",
   [TaskType.BINARY_REASONING]: "Binary + reasoning",
@@ -163,7 +163,7 @@ function fieldSpecFor(taskType: TaskType, key: string): FieldSpec {
   return spec;
 }
 
-function buildPayloadFromDraft(taskType: TaskType, draft: Record<string, unknown>): TaskPayload {
+export function buildPayloadFromDraft(taskType: TaskType, draft: Record<string, unknown>): TaskPayload {
   switch (taskType) {
     case TaskType.PREFERENCE_MC: {
       const payload: PreferenceMcPayload = {

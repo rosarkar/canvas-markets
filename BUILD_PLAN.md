@@ -358,6 +358,30 @@ Group owner registration and advertiser buy flow both need keyword/intent classi
 
 DM half of the verification loop not yet confirmed end-to-end. Need a second Telegram account (not the group owner) to test the full flow: join Canvas Test group (`-5145298837`) → receive captcha in DM → reply → Kimi scores → admit or re-prompt. Virtual number services had availability issues — this is still the active next step before Phase 1 is declared done.
 
+### Architecture Decisions (Jun 25, 2026 — Mateo + Rohit planning session)
+
+#### Per-advertiser deposit wallets (not yet built)
+
+Each advertiser gets a unique deposit wallet address for tracking purposes. Funds flow into the central escrow smart contract but are tracked per advertiser via their unique wallet. This allows Canvas to attribute funds, track spend over time, and issue refunds cleanly. Mateo to design wallet derivation strategy (CDP server wallets or deterministic derivation from advertiser ID).
+
+#### Batch payouts to group owners (not yet built)
+
+Group owner payouts are batched and sent once daily to their registered wallet. Not per-verification in real time — that comes later as volume grows. Daily batch keeps gas costs manageable at early scale. Eventually move to more frequent settlement as protocol matures.
+
+#### Outbid flow — wait your turn (not yet built)
+
+When an advertiser is outbid, Canvas bot DMs them with three options:
+
+- Cancel and get refund of unused budget
+- Rebid higher to reclaim top slot immediately
+- Wait your turn — stay in queue, your campaign activates automatically when all higher bids for that group are exhausted
+
+Queue is ordered by bid price descending. When the top bidder's budget runs out, the next in line activates automatically with no action required. This is meaningfully different from the current outbid flow (which just notifies and asks to rebid) — it makes Canvas a passive income set-and-forget for advertisers who are willing to wait.
+
+#### No-advertiser verification fallback (partially wired, needs polish)
+
+Groups with no active advertiser budget still run a verification — humans complete a generic task and are admitted, but no USDC payout is triggered and no completion is logged onchain. This keeps the bot useful for group owners even before advertisers arrive. The trivia MC fallback is already partially wired for this case — confirm it covers the no-advertiser path cleanly and the group owner UX is clear (bot should indicate 'unsponsored verification' so owners know they aren't earning on this join).
+
 ### Commit history (recent)
 
 - `235a3ba` — Fix P0 bugs, polish bot messages, add timeout DM, fix bid queue

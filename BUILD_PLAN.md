@@ -14,6 +14,15 @@ A two-sided marketplace on Telegram: **group owners** earn USDC per verified joi
 
 ## Update Log
 
+### Jun 25, 2026 — Kimi Integration + Conversational Agent Flows
+
+- **`callKimi` extracted as shared low-level client in `scoring.ts`** — reused by `scoreWithKimi`, `rules-assistant.ts`, and `buy-assistant.ts`. Do not create a new Kimi client anywhere.
+- **`KIMI_BASE_URL` confirmed as `https://api.moonshot.ai/v1`** — set in both local `.env` and Railway canvas-ai variables. `api.moonshot.cn` and `platform.moonshot.cn` are wrong endpoints for this key.
+- **AI-assisted rules configuration added to group owner registration flow** — triggers after wallet confirmation. Bot has a multi-turn Kimi conversation with the owner to design community rules. Confirmed rules saved as JSONB to `groups.rules` column (new, default `[]`).
+- **`RULES_SENT` state added to verification state machine** — shown before `TASK_SENT` when group has rules. Human must type 'I agree' to advance. Groups with no rules skip this state.
+- **`/buy` rebuilt as Kimi-powered conversational agent** — replaces linear button/field-collector. Agent walks advertiser through goal → template recommendation → task design. All financial validation stays in TypeScript (`MIN_QUANTITY`, `MIN_BID_MICROUNITS`, top-bid check). `placeBid` + `createTemplate` only fire on explicit 'confirm'.
+- **45 tests passing** as of commit `d901fba`.
+
 ### Jun 24, 2026 — Captcha Template System
 
 **Completed this session:**
@@ -93,7 +102,11 @@ src/
 │   ├── verification-tasks.ts        # Task resolver + types (incl. rank/binary reasoning)
 │   ├── text-response-parser.ts      # Ranking/option + reasoning extraction
 │   ├── captcha-questions.ts         # Trivia fallback (10 questions)
-│   └── scoring.ts                   # Kimi + keyword fallback
+│   ├── scoring.ts                   # Kimi + keyword fallback
+│   ├── buy-assistant.ts             # Kimi buy agent logic, intent extraction, live context builder
+│   ├── buy-assistant.test.ts        # 13 tests for buy agent
+│   ├── rules-assistant.ts           # Kimi rules config logic, isOffTopicRulesDraft guardrail
+│   └── rules-assistant.test.ts      # Tests for rules assistant
 ├── api/
 │   ├── advertiser.ts                # GET /api/advertiser?wallet=
 │   └── group-owner.ts               # GET /api/group-owner?wallet=
@@ -107,7 +120,9 @@ src/
 │   │   ├── buy.ts                   # Advertiser /buy: template picker + field collection + reuse
 │   │   ├── captcha-callback.ts      # MC button answers + agent-offer follow-up
 │   │   ├── message.ts               # DM text → Kimi; web_app_data
-│   │   └── webapp-data.ts
+│   │   ├── webapp-data.ts
+│   │   ├── buy-agent.ts             # Advertiser buy agent handler, hasActiveBuyAgentSession()
+│   │   └── rules-setup.ts           # Group owner rules config handler, hasActiveRulesSession()
 │   └── services/
 │       ├── begin-verification.ts    # Task resolver at join (incl. saved templates)
 │       ├── captcha-dm.ts            # Send task DM by type, sponsor tag, agent offer
@@ -145,6 +160,9 @@ docs/DASHBOARD_MVP.md                # Web dashboard plan
 | Mini App preference template (`preference_webapp`) | ✅ Spike | |
 | Railway deploy + Postgres | ✅ | `public/` now copied in Dockerfile prod stage |
 | Kimi API key | ✅ | Added to Railway variables |
+| AI-assisted rules configuration for group owners | ✅ | Multi-turn Kimi conversation → confirmed rules saved to `groups.rules` |
+| `RULES_SENT` join-time rules gate | ✅ | Shown before captcha if group has rules; 'I agree' advances to captcha |
+| Kimi-powered conversational buy agent | ✅ | Goal → template → task design; TypeScript validates all financial fields |
 
 **Still stubbed:** Onchain step ①/②, escrow contract, deposit monitoring, daily report cron, admin loss handling.
 
@@ -278,11 +296,14 @@ See `docs/DASHBOARD_MVP.md` for detailed dashboard plan.
 ```bash
 cp .env.example .env
 # Fill: DATABASE_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_URL, TELEGRAM_WEBHOOK_SECRET, KIMI_API_KEY
+KIMI_BASE_URL=https://api.moonshot.ai/v1
 npm install
 npm run dev
 npm run smoke          # automated checks
 npm run seed:advertiser # optional sample campaign
 ```
+
+Note: `KIMI_BASE_URL` must also be set in Railway canvas-ai service Variables tab.
 
 **Local dev notes:**
 
@@ -313,3 +334,33 @@ See [`docs/TELEGRAM_API.md`](docs/TELEGRAM_API.md) for Bot API limits, webhook s
 - `/Users/matthewmeakin/basemate-v2/.cursor/plans/telegram_bot_pph_a55e60f5.plan.md` — join/mute/verify flow spec
 - `/Users/matthewmeakin/basemate-v2/src/discovery/adapters/keyword.adapter.ts` — atomic budget pattern for step ②
 - `/Users/matthewmeakin/basemate-v2/src/api/keywords.router.ts` — wallet signature auth if HTTP API needed later
+
+---
+
+## Known Gaps & Next Steps
+
+### To fix — rules content guardrail (low priority)
+
+`isOffTopicRulesDraft` in `rules-assistant.ts` is too aggressive. Real communities bond by discussing things outside their main topic. Remove the hard guardrail. Replace with an optional setting during group owner onboarding: if the owner wants to restrict conversations to on-topic only, Kimi adds a rule for it. Otherwise no restriction by default.
+
+### To fix — keyword/intent targeting system (next feature)
+
+Group owner registration and advertiser buy flow both need keyword/intent classification. Two targeting dimensions: (1) vertical match — DeFi protocol advertising to a DeFi group; (2) demographic match — luxury/lifestyle brand advertising to any crypto-native audience regardless of topic (crypto-native users skew high-net-worth, tech-forward, international). Kimi should infer demographic tags from group topic description during registration. Advertisers should be able to target on either axis or both.
+
+### Mateo — Phase 2 blockers
+
+- **Smart contract** — escrow deposit function, step 1 completion log onchain, step 2 USDC payout to group owner wallet gated on Kimi pass, budget tracking per group per advertiser, refund function for unused budgets. Deploy to Base mainnet.
+- **Coinbase CDP** — invite sent to Mateo, not yet configured.
+- **Bankr agent skill** — buy flow and register flow as natural language Bankr agent conversations. Reporting: completion counts, budget remaining, response data.
+- **x402 payment rails** — wire advertiser USDC to escrow contract through Bankr.
+
+### Phase 1 completion blocker
+
+DM half of the verification loop not yet confirmed end-to-end. Need a second Telegram account (not the group owner) to test the full flow: join Canvas Test group (`-5145298837`) → receive captcha in DM → reply → Kimi scores → admit or re-prompt. Virtual number services had availability issues — this is still the active next step before Phase 1 is declared done.
+
+### Commit history (recent)
+
+- `235a3ba` — Fix P0 bugs, polish bot messages, add timeout DM, fix bid queue
+- `fdbf461` — feat: advertiser captcha template system + escrow payout wiring
+- `3914c2d` — feat: AI-assisted rules configuration and join-time rules gate
+- `d901fba` — feat: Kimi-powered conversational buy agent + rules content guardrail

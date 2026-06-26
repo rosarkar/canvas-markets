@@ -1,26 +1,28 @@
 import type { Api } from "grammy";
 
 import type { GroupRow } from "@/adapters/groups.adapter.js";
-import type { VerificationRow } from "@/adapters/verification.adapter.js";
-import { releaseEscrowPayout } from "@/services/escrow.js";
+import { getVerificationByToken } from "@/adapters/verification.adapter.js";
+import { accrueVerificationPayout } from "@/adapters/payout.adapter.js";
+import { promoteNextBidder } from "@/services/bid-ladder.js";
 import {
   admitUser,
   approveJoinRequest,
   declineJoinRequest,
   rejectUser,
 } from "@/telegram/verification-actions.js";
-import {
-  deleteWelcomeGateMessage,
-} from "@/telegram/services/welcome-gate.js";
+import { deleteWelcomeGateMessage } from "@/telegram/services/welcome-gate.js";
 import { logger } from "@/utils/logger.js";
 
 export async function completeVerificationPass(
   api: Api,
-  verification: VerificationRow,
+  verificationId: string,
   group: GroupRow,
   _groupTitle: string,
   _botUsername: string,
 ): Promise<void> {
+  const verification = await getVerificationByToken(verificationId);
+  if (!verification) return;
+
   const chatId = Number(group.tgGroupId);
   const userId = Number(verification.tgUserId);
 
@@ -39,19 +41,21 @@ export async function completeVerificationPass(
     );
   }
 
-  // Fire-and-forget escrow payout — does not block user admission
   if (verification.advertiserId != null && verification.lockedBidPrice != null) {
-    void releaseEscrowPayout(
-      verification.advertiserId,
-      group.ownerWallet,
-      verification.lockedBidPrice,
-    );
+    try {
+      const accrual = await accrueVerificationPayout(verification.verificationId);
+      if (accrual?.exhausted) {
+        await promoteNextBidder(api, accrual.groupId, "exhausted", accrual.advertiserTgId);
+      }
+    } catch (err) {
+      logger.error({ err, verificationId: verification.verificationId }, "Payout accrual failed");
+    }
   }
 }
 
 export async function completeVerificationFail(
   api: Api,
-  verification: VerificationRow,
+  verification: { verificationId: string; entryType: string; tgUserId: bigint },
   group: GroupRow,
 ): Promise<void> {
   const chatId = Number(group.tgGroupId);
@@ -76,7 +80,7 @@ export async function completeVerificationFail(
 
 export async function completeVerificationTimeout(
   api: Api,
-  entryType: VerificationRow["entryType"],
+  entryType: string,
   group: GroupRow,
   tgUserId: bigint,
 ): Promise<void> {

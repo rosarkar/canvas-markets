@@ -7,6 +7,7 @@ import { Bot, webhookCallback } from "grammy";
 import { config } from "@/config/index.js";
 import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
 import { registerBuyAgentHandler } from "@/telegram/handlers/buy-agent.js";
+import { registerCampaignHandlers } from "@/telegram/handlers/campaigns.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js";
@@ -17,6 +18,7 @@ import { registerRulesSetupHandler } from "@/telegram/handlers/rules-setup.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
 import { registerAgentOfferSkipHandler } from "@/telegram/services/captcha-dm.js";
 import { advertiserRouter } from "@/api/advertiser.js";
+import { depositRouter } from "@/api/deposit.js";
 import { groupOwnerRouter } from "@/api/group-owner.js";
 import { logger } from "@/utils/logger.js";
 
@@ -39,6 +41,7 @@ export function startTelegramBot(): void {
   // here so it can't shadow or double-fire on the same command — its code stays in
   // the repo, just dormant.
   registerBuyAgentHandler(bot);
+  registerCampaignHandlers(bot);
   registerLinkHandler(bot);
   registerJoinHandler(bot);
   registerJoinRequestHandler(bot);
@@ -59,6 +62,7 @@ export function startTelegramBot(): void {
   app.use("/advertiser", express.static(path.join(repoRoot, "public/advertiser")));
   app.use("/group-owner", express.static(path.join(repoRoot, "public/group-owner")));
   app.use(advertiserRouter);
+  app.use(depositRouter);
   app.use(groupOwnerRouter);
 
   app.get("/health", (_req, res) => {

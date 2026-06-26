@@ -1,71 +1,145 @@
-import { createWalletClient, http } from "viem";
+import { createWalletClient, http, type Abi, type Address, getAddress, parseAbiItem } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
 import { config } from "@/config/index.js";
 import { logger } from "@/utils/logger.js";
 
-const ESCROW_ADDRESS = "0x262ac1a082fd32c83e9b32ff1912ea070ed55890" as const;
+export const USDC_BASE_MAINNET =
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 
-// NOTE: function name "releasePayout" is inferred from decompiled bytecode.
-// The deployed selector for this ABI must equal 0x3455e187.
-// If txs revert with "function not found", confirm actual name with Mateo.
-const ESCROW_ABI = [
+export const CANVAS_ESCROW_ABI = [
+  {
+    type: "event",
+    name: "BudgetDeposited",
+    inputs: [
+      { name: "campaignId", type: "uint256", indexed: true },
+      { name: "depositor", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "BudgetRefunded",
+    inputs: [
+      { name: "campaignId", type: "uint256", indexed: true },
+      { name: "to", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
   {
     type: "function",
-    name: "releasePayout",
+    name: "depositBudget",
     inputs: [
-      { type: "uint256", name: "advertiserId" },
-      { type: "address", name: "recipient" },
-      { type: "uint256", name: "amount" },
+      { name: "campaignId", type: "uint256" },
+      { name: "amount", type: "uint256" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
   },
-] as const;
+  {
+    type: "function",
+    name: "creditDirectDeposit",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "depositor", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "campaignBalance",
+    inputs: [{ name: "campaignId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "releasePayout",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "refundUnusedBudget",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const satisfies Abi;
 
-/**
- * Release USDC from escrow to the group owner after a successful verification.
- * Called fire-and-forget — errors are logged but do not block user admission.
- *
- * @param advertiserId - DB advertiser_id (matches contract's campaign key)
- * @param recipientAddress - Group owner's wallet (hex)
- * @param amountMicroUnits - Locked bid price in USDC microunits (6 decimals)
- */
+export const budgetDepositedEvent = parseAbiItem(
+  "event BudgetDeposited(uint256 indexed campaignId, address indexed depositor, uint256 amount)",
+);
+
+export function getEscrowAddress(): Address | null {
+  const raw = config.payments.escrowContractAddress?.trim();
+  if (!raw) return null;
+  try {
+    return getAddress(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function getUsdcAddress(): Address {
+  const raw = config.payments.usdcAddress?.trim();
+  if (raw) {
+    try {
+      return getAddress(raw);
+    } catch {
+      /* fall through */
+    }
+  }
+  return USDC_BASE_MAINNET;
+}
+
+function getRelayerWalletClient() {
+  const pk = config.base.relayerPrivateKey;
+  const escrowAddress = getEscrowAddress();
+  if (!pk || !escrowAddress) return null;
+
+  const key = (pk.startsWith("0x") ? pk : `0x${pk}`) as `0x${string}`;
+  const account = privateKeyToAccount(key);
+  const client = createWalletClient({
+    account,
+    chain: base,
+    transport: http(config.base.rpcUrl),
+  });
+  return { client, escrowAddress };
+}
+
 export async function releaseEscrowPayout(
   advertiserId: number,
   recipientAddress: string,
   amountMicroUnits: bigint,
 ): Promise<string | null> {
-  const pk = config.base.relayerPrivateKey;
-  if (!pk) {
-    logger.warn({ advertiserId }, "Escrow payout skipped — RELAYER_PRIVATE_KEY not set");
+  const ctx = getRelayerWalletClient();
+  if (!ctx) {
+    logger.warn({ advertiserId }, "Escrow payout skipped — relayer or escrow not configured");
     return null;
   }
 
   try {
-    const key = (pk.startsWith("0x") ? pk : `0x${pk}`) as `0x${string}`;
-    const account = privateKeyToAccount(key);
-    const client = createWalletClient({
-      account,
-      chain: base,
-      transport: http(config.base.rpcUrl),
-    });
-
-    const txHash = await client.writeContract({
-      address: ESCROW_ADDRESS,
-      abi: ESCROW_ABI,
+    const txHash = await ctx.client.writeContract({
+      address: ctx.escrowAddress,
+      abi: CANVAS_ESCROW_ABI,
       functionName: "releasePayout",
       args: [BigInt(advertiserId), recipientAddress as `0x${string}`, amountMicroUnits],
     });
 
     logger.info(
-      {
-        advertiserId,
-        recipientAddress,
-        amountMicroUnits: amountMicroUnits.toString(),
-        txHash,
-      },
+      { advertiserId, recipientAddress, amountMicroUnits: amountMicroUnits.toString(), txHash },
       "Escrow payout released",
     );
     return txHash;
@@ -73,4 +147,67 @@ export async function releaseEscrowPayout(
     logger.error({ advertiserId, recipientAddress, err }, "Escrow payout failed");
     return null;
   }
+}
+
+export async function creditDirectDeposit(
+  campaignId: number,
+  depositor: string,
+  amountMicro: bigint,
+): Promise<string | null> {
+  const ctx = getRelayerWalletClient();
+  if (!ctx) return null;
+
+  try {
+    const txHash = await ctx.client.writeContract({
+      address: ctx.escrowAddress,
+      abi: CANVAS_ESCROW_ABI,
+      functionName: "creditDirectDeposit",
+      args: [BigInt(campaignId), depositor as `0x${string}`, amountMicro],
+    });
+    logger.info({ campaignId, depositor, amountMicro: amountMicro.toString(), txHash }, "Direct deposit credited");
+    return txHash;
+  } catch (err) {
+    logger.error({ campaignId, err }, "creditDirectDeposit failed");
+    return null;
+  }
+}
+
+export async function refundUnusedBudget(
+  campaignId: number,
+  amountMicro: bigint,
+): Promise<string | null> {
+  const ctx = getRelayerWalletClient();
+  if (!ctx) return null;
+
+  try {
+    const txHash = await ctx.client.writeContract({
+      address: ctx.escrowAddress,
+      abi: CANVAS_ESCROW_ABI,
+      functionName: "refundUnusedBudget",
+      args: [BigInt(campaignId), amountMicro],
+    });
+    logger.info({ campaignId, amountMicro: amountMicro.toString(), txHash }, "Campaign budget refunded");
+    return txHash;
+  } catch (err) {
+    logger.error({ campaignId, err }, "refundUnusedBudget failed");
+    return null;
+  }
+}
+
+export async function readCampaignBalance(campaignId: number): Promise<bigint> {
+  const ctx = getRelayerWalletClient();
+  if (!ctx) return 0n;
+
+  const { createPublicClient } = await import("viem");
+  const publicClient = createPublicClient({
+    chain: base,
+    transport: http(config.base.rpcUrl),
+  });
+
+  return publicClient.readContract({
+    address: ctx.escrowAddress,
+    abi: CANVAS_ESCROW_ABI,
+    functionName: "campaignBalance",
+    args: [BigInt(campaignId)],
+  });
 }

@@ -4,6 +4,8 @@ import { createCanvasTables } from "@/adapters/schema.js";
 import { connectDb } from "@/db.js";
 import { expireStaleVerifications } from "@/adapters/verification.adapter.js";
 import { getGroupById } from "@/adapters/groups.adapter.js";
+import { startDepositMonitor } from "@/services/deposit-monitor.js";
+import { startPayoutBatchScheduler } from "@/services/payout-batch.js";
 import { getBot, startTelegramBot } from "@/telegram/bot.js";
 import { completeVerificationTimeout } from "@/telegram/services/verification-complete.js";
 import { logger } from "@/utils/logger.js";
@@ -14,6 +16,9 @@ async function main(): Promise<void> {
 
   await connectDb();
   await createCanvasTables();
+
+  startDepositMonitor();
+  startPayoutBatchScheduler();
 
   // Expire stale verifications every minute
   setInterval(() => {

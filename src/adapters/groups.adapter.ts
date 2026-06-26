@@ -1,4 +1,5 @@
 import { db } from "@/db.js";
+import { config } from "@/config/index.js";
 import { fromMicroUnits } from "@/utils/usdc.js";
 
 export interface GroupRow {
@@ -159,7 +160,13 @@ export async function getGroupOwnerStats(ownerWallet: string): Promise<GroupOwne
        SELECT
          group_id,
          COUNT(*) FILTER (WHERE state = 'PASSED') AS total_verifications,
-         SUM(locked_bid_price) FILTER (WHERE state = 'PASSED' AND locked_bid_price IS NOT NULL) AS pending_earnings_micro
+         SUM(
+           (locked_bid_price * (10000 - $2) / 10000)
+         ) FILTER (
+           WHERE state = 'PASSED'
+             AND locked_bid_price IS NOT NULL
+             AND payout_status = 'pending'
+         ) AS pending_earnings_micro
        FROM verifications
        GROUP BY group_id
      ) v_stats ON v_stats.group_id = g.group_id
@@ -174,7 +181,7 @@ export async function getGroupOwnerStats(ownerWallet: string): Promise<GroupOwne
      ) ab ON true
      WHERE g.owner_wallet = $1 AND g.is_active = true
      ORDER BY g.group_id`,
-    [ownerWallet.toLowerCase()],
+    [ownerWallet.toLowerCase(), config.payments.platformFeeBps],
   );
 
   return res.rows.map((row) => ({

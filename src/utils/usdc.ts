@@ -15,20 +15,36 @@ export function fromMicroUnits(micro: bigint): number {
   return Number(micro) / Number(MICRO_PER_UNIT);
 }
 
+/** Human-readable USD for Telegram messages (supports $0.01). */
+export function formatUsdMicro(micro: bigint): string {
+  const dollars = fromMicroUnits(micro);
+  if (dollars >= 1) return `$${dollars.toFixed(2)}`;
+  if (dollars >= 0.01) return `$${dollars.toFixed(2)}`;
+  return `$${dollars.toFixed(4)}`;
+}
+
 /**
- * Parse user bid input: "$0.35", "0.35", "$1", "1.50", etc.
+ * Parse user bid input: "$0.35", "0.35", ".01", "0,01", "0.01 USDC", etc.
  * Returns microunits (bigint).
  */
 export function parseBidInput(input: string): bigint {
-  const trimmed = input.trim();
+  let trimmed = input.trim();
   if (!trimmed) throw new Error("Bid amount is required");
 
-  // Allow leading-dot decimals like ".36" in addition to "0.36"
-  const withDollar = trimmed.match(/^\$\s*([\d,]*\.?\d+)\s*$/);
-  if (withDollar) return toMicroUnits(withDollar[1]!.replace(/,/g, ""));
+  trimmed = trimmed.replace(/\s*(usd|usdc)\s*$/i, "").trim();
+  trimmed = trimmed.replace(/^\$\s*/, "");
 
-  const plain = trimmed.match(/^([\d,]*\.?\d+)\s*$/);
-  if (plain) return toMicroUnits(plain[1]!.replace(/,/g, ""));
+  let normalized = trimmed;
+  if (normalized.includes(",") && !normalized.includes(".")) {
+    normalized = normalized.replace(/,/g, ".");
+  } else {
+    normalized = normalized.replace(/,/g, "");
+  }
 
-  throw new Error(`Could not parse bid amount: ${input}`);
+  const match = normalized.match(/^(\d*(?:\.\d+)?|\.\d+)$/);
+  if (!match?.[1] || match[1] === ".") {
+    throw new Error(`Could not parse bid amount: ${input}`);
+  }
+
+  return toMicroUnits(match[1]);
 }

@@ -15,8 +15,8 @@ const SAMPLE_TASK =
   "You have 10,000 USDC — would you lend on Moonwell for yield or trade on Aerodrome? Pick what you'd actually do.";
 
 const SEED_ADVERTISER_TG_ID = BigInt(process.env.SEED_ADVERTISER_TG_ID ?? "0");
-const BID_DOLLARS = process.env.SEED_BID ?? "0.35";
-const QUANTITY = Number(process.env.SEED_QUANTITY ?? "10");
+const BID_DOLLARS = process.env.SEED_BID ?? "0.01";
+const QUANTITY = Number(process.env.SEED_QUANTITY ?? "1");
 
 async function main(): Promise<void> {
   await connectDb();
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
   console.log(`  advertiser_id: ${result.advertiserId}`);
   console.log(`  bid: $${BID_DOLLARS} x ${QUANTITY} verifications`);
   console.log(`  task: ${SAMPLE_TASK}`);
+  console.log("\nNote: campaign is pending_deposit until USDC is sent to escrow via depositBudget().");
 
   await db.end();
 }

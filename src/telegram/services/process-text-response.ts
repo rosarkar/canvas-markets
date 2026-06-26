@@ -75,7 +75,7 @@ async function finalize(
       kimiScore: result.score,
       bonusMicroUnits,
     });
-    await completeVerificationPass(api, verification, group, groupTitle, botUsername);
+    await completeVerificationPass(api, verification.verificationId, group, groupTitle, botUsername);
     logger.info(
       { verificationId: verification.verificationId, score: result.score, method: result.method },
       "User passed text verification",

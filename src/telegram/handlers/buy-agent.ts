@@ -21,7 +21,7 @@ import {
   type TaskOption,
   type TaskPayload,
 } from "@/services/verification-tasks.js";
-import { buildPayloadFromDraft, FORMAT_LABELS, formatUsd, MIN_QUANTITY } from "@/telegram/handlers/buy.js";
+import { buildDepositMessage, buildPayloadFromDraft, FORMAT_LABELS, formatUsd, MIN_QUANTITY } from "@/telegram/handlers/buy.js";
 import { fromMicroUnits, toMicroUnits } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
 
@@ -242,31 +242,30 @@ async function finalizeCampaign(
       templateId: template.templateId,
     });
 
-    await ctx.reply(
-      `✅ Campaign live for **${campaign.groupTitle}**!\n\n` +
-        `• Bid: ${formatUsd(campaign.bidMicroUnits)} / verification\n` +
-        `• Quantity: ${campaign.quantity}\n` +
-        `• Total budget: ${formatUsd(total)} USDC (escrow deposit pending)\n` +
-        `• Format: ${FORMAT_LABELS[campaign.taskType]}\n\n` +
-        `Campaign ID: ${result.advertiserId}`,
-      { parse_mode: "Markdown" },
-    );
+    const taskText =
+      (campaign.payload as { prompt?: string }).prompt ??
+      campaign.templateName ??
+      "Verification task";
+    const { text, keyboard } = buildDepositMessage({
+      advertiserId: result.advertiserId,
+      expectedDepositMicro: result.expectedDepositMicro,
+      bidMicroUnits: campaign.bidMicroUnits,
+      quantity: campaign.quantity,
+      groupTitle: campaign.groupTitle,
+      taskText,
+    });
 
-    if (result.displacedAdvertiserTgId && result.displacedAdvertiserTgId !== BigInt(fromId)) {
-      try {
-        await ctx.api.sendMessage(
-          Number(result.displacedAdvertiserTgId),
-          `You've been outbid in **${campaign.groupTitle}**. New top bid: ${formatUsd(campaign.bidMicroUnits)}. Send /buy to rebid.`,
-          { parse_mode: "Markdown" },
-        );
-      } catch {
-        /* advertiser may have blocked bot */
-      }
-    }
+    await ctx.reply(text, { parse_mode: "Markdown", reply_markup: keyboard });
 
     logger.info(
-      { advertiserId: result.advertiserId, groupId: campaign.groupId, fromId, templateId: template.templateId },
-      "Advertiser campaign created via buy agent",
+      {
+        advertiserId: result.advertiserId,
+        groupId: campaign.groupId,
+        fromId,
+        templateId: template.templateId,
+        total: total.toString(),
+      },
+      "Advertiser campaign pending deposit via buy agent",
     );
 
     const linked = await getAdvertiserByTgId(BigInt(fromId));

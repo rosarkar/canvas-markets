@@ -16,7 +16,9 @@ import {
   type TaskOption,
   type TaskPayload,
 } from "@/services/verification-tasks.js";
-import { fromMicroUnits, parseBidInput } from "@/utils/usdc.js";
+import { getEscrowAddress } from "@/services/escrow.js";
+import { buildDepositPageUrl } from "@/utils/deposit-sign.js";
+import { formatUsdMicro, fromMicroUnits, parseBidInput } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
 
 type BuyStep =
@@ -57,10 +59,53 @@ export function hasActiveBuySession(userId: number): boolean {
   return sessions.has(userId);
 }
 
-export const MIN_QUANTITY = 10;
+export const MIN_QUANTITY = config.constants.MIN_CAMPAIGN_QUANTITY;
 
 export function formatUsd(micro: bigint): string {
-  return `$${fromMicroUnits(micro).toFixed(2)}`;
+  return formatUsdMicro(micro);
+}
+
+export function buildDepositMessage(input: {
+  advertiserId: number;
+  expectedDepositMicro: bigint;
+  bidMicroUnits: bigint;
+  quantity: number;
+  groupTitle: string;
+  taskText: string;
+}): { text: string; keyboard: InlineKeyboard } {
+  const escrow = getEscrowAddress();
+  if (!escrow) {
+    return {
+      text: "Escrow not configured. Set ESCROW_CONTRACT_ADDRESS on the server.",
+      keyboard: new InlineKeyboard(),
+    };
+  }
+
+  const totalUsd = formatUsd(input.expectedDepositMicro);
+  let depositUrl: string;
+  try {
+    depositUrl = buildDepositPageUrl(input.advertiserId, input.expectedDepositMicro);
+  } catch {
+    depositUrl = "";
+  }
+
+  const keyboard = new InlineKeyboard();
+  if (depositUrl) {
+    keyboard.url("Pay with Base", depositUrl).row();
+  }
+  keyboard.url("View escrow on Basescan", `https://basescan.org/address/${escrow}`);
+
+  const text =
+    `**Campaign #${input.advertiserId} created — awaiting deposit**\n\n` +
+    `Group: **${input.groupTitle}**\n` +
+    `• ${input.quantity} verification(s) @ ${formatUsd(input.bidMicroUnits)} each\n` +
+    `• Total: **${totalUsd} USDC** on Base\n` +
+    `• Task: ${input.taskText}\n\n` +
+    `Tap **Pay with Base** to fund your campaign in one tap.\n\n` +
+    `Need USDC? Buy on Coinbase and withdraw to Base network.\n\n` +
+    `Expires in 2 hours if no deposit is received.`;
+
+  return { text, keyboard };
 }
 
 export const FORMAT_LABELS: Record<TaskType, string> = {
@@ -295,7 +340,7 @@ export function registerBuyHandler(bot: Bot): void {
     }
 
     await ctx.reply(
-      "**Advertiser buy flow**\n\nPick a target group. You'll set quantity (min 10), bid per verification, and your verification template.",
+      "**Advertiser buy flow**\n\nPick a target group. You'll set quantity, bid per verification, and your verification template.",
       { parse_mode: "Markdown", reply_markup: keyboard },
     );
   });
@@ -393,31 +438,26 @@ export function registerBuyHandler(bot: Bot): void {
           templateId: session.templateId,
         });
 
-        await ctx.reply(
-          `✅ Campaign live for **${session.groupTitle}**!\n\n` +
-            `• Bid: ${formatUsd(session.bidMicroUnits)} / verification\n` +
-            `• Quantity: ${session.quantity}\n` +
-            `• Total budget: ${formatUsd(total)} USDC (escrow deposit pending)\n` +
-            `• Format: ${FORMAT_LABELS[session.taskType!]}\n\n` +
-            `Campaign ID: ${result.advertiserId}`,
-          { parse_mode: "Markdown" },
-        );
+        const { text, keyboard } = buildDepositMessage({
+          advertiserId: result.advertiserId,
+          expectedDepositMicro: result.expectedDepositMicro,
+          bidMicroUnits: session.bidMicroUnits,
+          quantity: session.quantity,
+          groupTitle: session.groupTitle ?? `Group #${session.groupId}`,
+          taskText: session.taskText ?? session.templateName ?? "Verification task",
+        });
 
-        if (result.displacedAdvertiserTgId && result.displacedAdvertiserTgId !== BigInt(fromId)) {
-          try {
-            await ctx.api.sendMessage(
-              Number(result.displacedAdvertiserTgId),
-              `You've been outbid in **${session.groupTitle}**. New top bid: ${formatUsd(session.bidMicroUnits)}. Send /buy to rebid.`,
-              { parse_mode: "Markdown" },
-            );
-          } catch {
-            /* advertiser may have blocked bot */
-          }
-        }
+        await ctx.reply(text, { parse_mode: "Markdown", reply_markup: keyboard });
 
         logger.info(
-          { advertiserId: result.advertiserId, groupId: session.groupId, fromId, templateId: session.templateId },
-          "Advertiser campaign created via /buy",
+          {
+            advertiserId: result.advertiserId,
+            groupId: session.groupId,
+            fromId,
+            templateId: session.templateId,
+            total: total.toString(),
+          },
+          "Advertiser campaign pending deposit",
         );
 
         // Prompt wallet link if advertiser hasn't done it yet
@@ -473,7 +513,10 @@ export function registerBuyHandler(bot: Bot): void {
       const hint = topBid
         ? `Current top bid: ${formatUsd(topBid.bidPerVerification)}. Yours must be higher.`
         : `Minimum bid: ${formatUsd(config.constants.MIN_BID_MICROUNITS)}.`;
-      await ctx.reply(`Bid per verification in USD (e.g. 0.35 or $0.35).\n${hint}`);
+      await ctx.reply(
+        `Bid per verification in USD (e.g. \`0.01\`, \`.01\`, or \`$0.35\`).\n${hint}`,
+        { parse_mode: "Markdown" },
+      );
       return;
     }
 

@@ -22,6 +22,20 @@ interface Config {
   base: {
     rpcUrl: string;
     relayerPrivateKey: string;
+    deployerPrivateKey: string;
+  };
+  payments: {
+    escrowContractAddress: string;
+    usdcAddress: string;
+    bankrApiKey: string;
+    depositPollIntervalMs: number;
+    depositTtlMs: number;
+    depositUrlSecret: string;
+    miniAppBaseUrl: string;
+    payoutBatchIntervalMs: number;
+    companyWallet: string;
+    /** Platform fee in basis points (100 = 1%, 1000 = 10%). Default: 1000. */
+    platformFeeBps: number;
   };
   openai: {
     apiKey: string;
@@ -32,6 +46,7 @@ interface Config {
     VERIFICATION_TTL_MS: number;
     COOLDOWN_MS: number;
     MIN_BID_MICROUNITS: bigint;
+    MIN_CAMPAIGN_QUANTITY: number;
   };
 }
 
@@ -55,6 +70,28 @@ export const config: Config = {
   base: {
     rpcUrl: process.env.BASE_RPC_URL?.trim() || "https://mainnet.base.org",
     relayerPrivateKey: process.env.RELAYER_PRIVATE_KEY?.trim() ?? "",
+    deployerPrivateKey:
+      process.env.DEPLOYER_PRIVATE_KEY?.trim() ??
+      process.env.RELAYER_PRIVATE_KEY?.trim() ??
+      "",
+  },
+  payments: {
+    escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS?.trim() ?? "",
+    usdcAddress:
+      process.env.USDC_BASE_ADDRESS?.trim() ??
+      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    bankrApiKey: process.env.BANKR_API_KEY?.trim() ?? "",
+    depositPollIntervalMs: Number(process.env.DEPOSIT_POLL_INTERVAL_MS ?? "30000"),
+    depositTtlMs: Number(process.env.DEPOSIT_TTL_MS ?? "7200000"),
+    depositUrlSecret: process.env.DEPOSIT_URL_SECRET?.trim() ?? "",
+    miniAppBaseUrl:
+      process.env.MINI_APP_BASE_URL?.trim() ??
+      (process.env.TELEGRAM_WEBHOOK_URL?.trim()
+        ? new URL(process.env.TELEGRAM_WEBHOOK_URL.trim()).origin
+        : "http://localhost:3000"),
+    payoutBatchIntervalMs: Number(process.env.PAYOUT_BATCH_INTERVAL_MS ?? "86400000"),
+    companyWallet: process.env.COMPANY_WALLET?.trim() ?? "",
+    platformFeeBps: Number(process.env.PLATFORM_FEE_BPS ?? "1000"),
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY?.trim() ?? "",
@@ -63,6 +100,7 @@ export const config: Config = {
     KIMI_PASS_THRESHOLD: Number(process.env.KIMI_PASS_THRESHOLD ?? "0"),
     VERIFICATION_TTL_MS: 300_000,
     COOLDOWN_MS: 86_400_000,
-    MIN_BID_MICROUNITS: 10_000n,
+    MIN_BID_MICROUNITS: BigInt(process.env.MIN_BID_MICROUNITS ?? "10000"),
+    MIN_CAMPAIGN_QUANTITY: Number(process.env.MIN_CAMPAIGN_QUANTITY ?? "1"),
   },
 };

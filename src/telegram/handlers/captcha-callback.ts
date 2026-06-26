@@ -101,7 +101,7 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
 
     if (isCorrect) {
       await transitionState(verificationId, VerificationState.PASSED);
-      await completeVerificationPass(ctx.api, verification, group, groupTitle, botUsername);
+      await completeVerificationPass(ctx.api, verificationId, group, groupTitle, botUsername);
       await ctx.answerCallbackQuery({ text: "Verified!" });
 
       if (messageId && dmChatId) {

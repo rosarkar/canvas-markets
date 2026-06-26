@@ -24,9 +24,11 @@ export async function createCanvasTables(): Promise<void> {
         remaining_budget      BIGINT NOT NULL,
         task_text             TEXT,
         advertiser_tg_id      BIGINT,
-        campaign_status       TEXT NOT NULL DEFAULT 'active'
-          CHECK (campaign_status IN ('active', 'paused', 'exhausted', 'expired')),
+        campaign_status       TEXT NOT NULL DEFAULT 'pending_deposit',
         outbid_notified       BOOLEAN NOT NULL DEFAULT false,
+        expected_deposit_micro BIGINT,
+        deposit_tx_hash       TEXT,
+        deposit_confirmed_at  TIMESTAMPTZ,
         created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -99,6 +101,45 @@ export async function createCanvasTables(): Promise<void> {
         tg_id                 BIGINT PRIMARY KEY,
         wallet_address        VARCHAR(42) UNIQUE,
         created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS deposit_cursor (
+        id                    INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        last_block            BIGINT NOT NULL DEFAULT 0
+      );
+      INSERT INTO deposit_cursor (id, last_block) VALUES (1, 0) ON CONFLICT (id) DO NOTHING;
+
+      ALTER TABLE advertiser_budgets DROP CONSTRAINT IF EXISTS advertiser_budgets_campaign_status_check;
+      ALTER TABLE advertiser_budgets ADD CONSTRAINT advertiser_budgets_campaign_status_check
+        CHECK (campaign_status IN ('active', 'paused', 'exhausted', 'expired', 'pending_deposit', 'withdrawn'));
+
+      ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS paused_at TIMESTAMPTZ;
+      ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
+      ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS refund_tx_hash TEXT;
+
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS payout_status TEXT;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS payout_tx_hash TEXT;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS payout_batch_id UUID;
+
+      CREATE INDEX IF NOT EXISTS idx_verifications_payout_pending
+        ON verifications (payout_status) WHERE payout_status = 'pending';
+
+      CREATE TABLE IF NOT EXISTS payment_credits (
+        payment_id     TEXT PRIMARY KEY,
+        campaign_id    INT NOT NULL REFERENCES advertiser_budgets(advertiser_id),
+        amount_micro   BIGINT NOT NULL,
+        sender         VARCHAR(42),
+        status         TEXT NOT NULL CHECK (status IN ('pending','submitted','confirmed','failed')),
+        credit_tx_hash TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS payout_batches (
+        batch_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        total_micro     BIGINT NOT NULL,
+        tx_count        INT NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'completed'
       );
     `);
   } finally {

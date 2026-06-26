@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Canvas — Pay with Base</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0a; color: #f5f5f5; }
+    body { max-width: 420px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    .card { background: #171717; border-radius: 12px; padding: 20px; margin-top: 16px; }
+    .muted { color: #a3a3a3; font-size: 0.875rem; }
+    .amount { font-size: 2rem; font-weight: 600; margin: 12px 0; }
+    button {
+      width: 100%; padding: 14px 16px; font-size: 1rem; font-weight: 600;
+      border: none; border-radius: 10px; cursor: pointer; margin-top: 16px;
+      background: #0052ff; color: #fff;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.875rem; }
+    .ok { background: #052e16; color: #86efac; }
+    .err { background: #450a0a; color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <h1>Canvas Protocol</h1>
+  <p class="muted">Fund your campaign with USDC on Base</p>
+
+  <div class="card">
+    <div class="muted">Campaign #<span id="campaign-id">—</span></div>
+    <div class="amount" id="amount-display">—</div>
+    <p class="muted">One-tap pay with your Base Account. Gas sponsored.</p>
+    <button id="pay-btn" type="button">Pay with Base</button>
+    <div id="status" class="status" style="display:none"></div>
+  </div>
+
+  <script type="module">
+    import { pay } from "https://esm.sh/@base-org/account";
+
+    const params = new URLSearchParams(location.search);
+    const campaignId = params.get("campaign");
+    const amountMicro = params.get("amount");
+    const exp = params.get("exp");
+    const sig = params.get("sig");
+
+    const statusEl = document.getElementById("status");
+    const payBtn = document.getElementById("pay-btn");
+
+    function showStatus(msg, ok) {
+      statusEl.style.display = "block";
+      statusEl.className = "status " + (ok ? "ok" : "err");
+      statusEl.textContent = msg;
+    }
+
+    function microToUsd(micro) {
+      const n = BigInt(micro);
+      const whole = n / 1000000n;
+      const frac = (n % 1000000n).toString().padStart(6, "0").replace(/0+$/, "");
+      return frac ? whole + "." + frac : whole.toString();
+    }
+
+    if (!campaignId || !amountMicro || !exp || !sig) {
+      showStatus("Invalid deposit link. Return to Telegram and try again.", false);
+      payBtn.disabled = true;
+    } else {
+      document.getElementById("campaign-id").textContent = campaignId;
+      document.getElementById("amount-display").textContent = "$" + microToUsd(amountMicro) + " USDC";
+    }
+
+    let escrowAddress = null;
+
+    async function loadConfig() {
+      const res = await fetch("/api/deposit/config");
+      if (!res.ok) throw new Error("Escrow not configured");
+      const data = await res.json();
+      escrowAddress = data.escrowAddress;
+    }
+
+    async function confirmPayment(paymentId) {
+      showStatus("Confirming deposit…", true);
+      const res = await fetch("/api/deposit/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId,
+          campaignId: Number(campaignId),
+          amountMicro,
+          exp: Number(exp),
+          sig,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showStatus("✅ Deposit confirmed! Return to Telegram — your campaign goes live in ~30s.", true);
+      } else {
+        showStatus(data.error || "Confirmation failed.", false);
+        payBtn.disabled = false;
+      }
+    }
+
+    payBtn.addEventListener("click", async () => {
+      if (!campaignId || !amountMicro) return;
+      payBtn.disabled = true;
+      showStatus("Opening Base Pay…", true);
+
+      try {
+        await loadConfig();
+        const usdAmount = microToUsd(amountMicro);
+        const payment = await pay({ amount: usdAmount, to: escrowAddress });
+        await confirmPayment(payment.id);
+      } catch (err) {
+        showStatus(err?.message || "Payment failed or was cancelled.", false);
+        payBtn.disabled = false;
+      }
+    });
+
+    loadConfig().catch(() => showStatus("Could not load escrow config.", false));
+  </script>
+</body>
+</html>

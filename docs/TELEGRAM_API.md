@@ -134,5 +134,7 @@ Use for offline search only. **Always prefer [core.telegram.org/bots/api](https:
 | How far can captcha UI go in chat? | This file → Task types table |
 | Rich cards / drag-rank UI? | [Mini Apps](https://core.telegram.org/bots/webapps) |
 | Join portal + approve flow? | [ChatJoinRequest](https://core.telegram.org/bots/api#chatjoinrequest) |
+| Advertiser deposits + escrow? | [`BUILD_PLAN.md`](../BUILD_PLAN.md) payments v0 section |
+| Bankr onramp for advertisers? | [@bankr_ai_bot](https://t.me/bankr_ai_bot) + `npm run bankr:spike` |
 | Advertiser dashboard + API? | [`DASHBOARD_MVP.md`](./DASHBOARD_MVP.md) |
 | Implementation status? | [`BUILD_PLAN.md`](../BUILD_PLAN.md) |

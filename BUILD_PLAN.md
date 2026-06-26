@@ -164,7 +164,19 @@ docs/DASHBOARD_MVP.md                # Web dashboard plan
 | `RULES_SENT` join-time rules gate | ✅ | Shown before captcha if group has rules; 'I agree' advances to captcha |
 | Kimi-powered conversational buy agent | ✅ | Goal → template → task design; TypeScript validates all financial fields |
 
-**Still stubbed:** Onchain step ①/②, escrow contract, deposit monitoring, daily report cron, admin loss handling.
+**Still stubbed:** Onchain step ① logging, daily report cron, admin loss handling.
+
+**Payments v0:**
+
+| Component | Status |
+|-----------|--------|
+| `CanvasEscrowV0.sol` deployed on Base mainnet | ✅ |
+| Contract verification on Basescan | ⏳ Required for Bankr |
+| `pending_deposit` campaign flow in `/buy` | ✅ |
+| RPC deposit monitor (`BudgetDeposited` events) | ✅ |
+| `releasePayout` on verification pass | ✅ Wired |
+| Min bid $0.01 (`MIN_BID_MICROUNITS=10000`) | ✅ |
+| Bankr advertiser billing (server-side charge) | Not supported — instructions / skill only |
 
 ---
 

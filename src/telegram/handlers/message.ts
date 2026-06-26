@@ -203,7 +203,7 @@ async function handleWebAppData(ctx: {
   const botUsername = me.username ?? "CanvasProtocolBot";
 
   await transitionState(verification.verificationId, VerificationState.PASSED);
-  await completeVerificationPass(ctx.api, verification, group, groupTitle, botUsername);
+  await completeVerificationPass(ctx.api, verification.verificationId, group, groupTitle, botUsername);
 
   await ctx.reply(`✅ You're in! You can now chat in **${groupTitle}**.`, { parse_mode: "Markdown" });
   logger.info(

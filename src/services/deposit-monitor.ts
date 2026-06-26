@@ -1,6 +1,7 @@
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
+import { db } from "@/db.js";
 import {
   confirmCampaignDeposit,
   expirePendingDeposits,
@@ -8,8 +9,7 @@ import {
   type PendingCampaign,
 } from "@/adapters/bidding.js";
 import { config } from "@/config/index.js";
-import { db } from "@/db.js";
-import { budgetDepositedEvent, CANVAS_ESCROW_ABI, getEscrowAddress } from "@/services/escrow.js";
+import { budgetDepositedEvent, CANVAS_ESCROW_ABI, creditDirectDeposit, getEscrowAddress, readUnallocatedUsdc } from "@/services/escrow.js";
 import { getBot } from "@/telegram/bot.js";
 import { fromMicroUnits } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
@@ -97,6 +97,55 @@ async function processDepositLog(
   }
 }
 
+async function recoverFailedPaymentCredits(): Promise<void> {
+  const rows = await db.query<{
+    payment_id: string;
+    campaign_id: number;
+    amount_micro: string;
+    sender: string | null;
+  }>(
+    `SELECT payment_id, campaign_id, amount_micro, sender
+     FROM payment_credits
+     WHERE status = 'failed'
+       AND created_at > NOW() - INTERVAL '24 hours'`,
+  );
+
+  if (rows.rows.length === 0) return;
+
+  const free = await readUnallocatedUsdc();
+  if (free === 0n) return;
+
+  for (const row of rows.rows) {
+    const amountMicro = BigInt(row.amount_micro);
+    if (free < amountMicro) continue;
+
+    const pending = await getPendingCampaignById(row.campaign_id);
+    if (!pending || pending.campaignStatus !== "pending_deposit") continue;
+    if (amountMicro !== pending.expectedDepositMicro) continue;
+
+    const depositor = row.sender;
+    if (!depositor) continue;
+
+    const txHash = await creditDirectDeposit(row.campaign_id, depositor, amountMicro, {
+      waitForFundsMs: 0,
+    });
+    if (!txHash) continue;
+
+    await db.query(
+      `UPDATE payment_credits SET status = 'confirmed', credit_tx_hash = $2 WHERE payment_id = $1`,
+      [row.payment_id, txHash],
+    );
+
+    const result = await confirmCampaignDeposit(row.campaign_id, txHash, amountMicro);
+    if (!result.confirmed) continue;
+
+    logger.info({ campaignId: row.campaign_id, txHash }, "Recovered failed Base Pay credit");
+
+    const updated = await getPendingCampaignById(row.campaign_id);
+    if (updated) await notifyCampaignLive(updated);
+  }
+}
+
 export async function pollEscrowDeposits(): Promise<void> {
   if (polling) return;
   const escrowAddress = getEscrowAddress();
@@ -176,6 +225,11 @@ export function startDepositMonitor(): void {
   void pollEscrowDeposits();
   setInterval(() => {
     void pollEscrowDeposits();
+  }, intervalMs);
+
+  void recoverFailedPaymentCredits();
+  setInterval(() => {
+    void recoverFailedPaymentCredits();
   }, intervalMs);
 
   setInterval(() => {

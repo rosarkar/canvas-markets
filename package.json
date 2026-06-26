@@ -19,6 +19,7 @@
     "bankr:spike": "tsx scripts/bankr-spike.ts",
     "deploy:escrow": "tsx scripts/deploy-escrow.ts",
     "deposit:campaign": "tsx scripts/deposit-campaign.ts",
+    "credit:deposit": "tsx scripts/credit-base-pay-deposit.ts",
     "payout:batch": "tsx scripts/payout-batch.ts",
     "verify:escrow": "tsx scripts/verify-escrow.ts"
   },

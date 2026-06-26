@@ -1,6 +1,6 @@
 import { db } from "@/db.js";
 
-import { getPendingCampaignById } from "@/adapters/bidding.js";
+import { getPendingCampaignById, confirmCampaignDeposit } from "@/adapters/bidding.js";
 import { creditDirectDeposit, getEscrowAddress } from "@/services/escrow.js";
 import { verifyDepositSign } from "@/utils/deposit-sign.js";
 import { logger } from "@/utils/logger.js";
@@ -72,6 +72,7 @@ export async function confirmCampaignDepositPay(
   if (prior?.status === "submitted" && prior.credit_tx_hash) {
     return { ok: true, creditTxHash: prior.credit_tx_hash };
   }
+  // failed or pending — allow retry once Base Pay USDC lands on-chain
 
   let paymentStatus: Awaited<ReturnType<typeof fetchPaymentStatus>>;
   try {
@@ -107,19 +108,30 @@ export async function confirmCampaignDepositPay(
     );
   }
 
-  const txHash = await creditDirectDeposit(input.campaignId, sender, campaign.expectedDepositMicro);
+  const txHash = await creditDirectDeposit(
+    input.campaignId,
+    sender,
+    campaign.expectedDepositMicro,
+    { waitForFundsMs: 90_000 },
+  );
   if (!txHash) {
     await db.query(
       `UPDATE payment_credits SET status = 'failed' WHERE payment_id = $1`,
       [input.paymentId],
     );
-    return { ok: false, error: "On-chain credit failed" };
+    return {
+      ok: false,
+      error:
+        "Payment received but on-chain credit is still pending. Your USDC is in escrow — we'll retry automatically, or refresh this page in a minute.",
+    };
   }
 
   await db.query(
     `UPDATE payment_credits SET status = 'confirmed', credit_tx_hash = $2 WHERE payment_id = $1`,
     [input.paymentId, txHash],
   );
+
+  await confirmCampaignDeposit(input.campaignId, txHash, campaign.expectedDepositMicro);
 
   return { ok: true, creditTxHash: txHash };
 }

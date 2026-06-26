@@ -91,7 +91,10 @@
       });
       const data = await res.json();
       if (data.ok) {
-        showStatus("✅ Deposit confirmed! Return to Telegram — your campaign goes live in ~30s.", true);
+        showStatus("✅ Deposit confirmed! Return to Telegram — your campaign is live.", true);
+      } else if (data.error?.includes("pending")) {
+        showStatus(data.error, false);
+        setTimeout(() => confirmPayment(paymentId), 20_000);
       } else {
         showStatus(data.error || "Confirmation failed.", false);
         payBtn.disabled = false;

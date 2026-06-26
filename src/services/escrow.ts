@@ -50,6 +50,13 @@ export const CANVAS_ESCROW_ABI = [
   },
   {
     type: "function",
+    name: "totalHeld",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "campaignBalance",
     inputs: [{ name: "campaignId", type: "uint256" }],
     outputs: [{ name: "", type: "uint256" }],
@@ -149,13 +156,81 @@ export async function releaseEscrowPayout(
   }
 }
 
+const ERC20_BALANCE_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const satisfies Abi;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function readUnallocatedUsdc(): Promise<bigint> {
+  const escrowAddress = getEscrowAddress();
+  if (!escrowAddress) return 0n;
+
+  const { createPublicClient } = await import("viem");
+  const publicClient = createPublicClient({
+    chain: base,
+    transport: http(config.base.rpcUrl),
+  });
+
+  const usdc = getUsdcAddress();
+  const [usdcBalance, totalHeld] = await Promise.all([
+    publicClient.readContract({
+      address: usdc,
+      abi: ERC20_BALANCE_ABI,
+      functionName: "balanceOf",
+      args: [escrowAddress],
+    }),
+    publicClient.readContract({
+      address: escrowAddress,
+      abi: CANVAS_ESCROW_ABI,
+      functionName: "totalHeld",
+    }),
+  ]);
+
+  return usdcBalance > totalHeld ? usdcBalance - totalHeld : 0n;
+}
+
+export async function waitForUnallocatedUsdc(
+  needed: bigint,
+  timeoutMs = 60_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const free = await readUnallocatedUsdc();
+    if (free >= needed) return true;
+    await sleep(2_000);
+  }
+  return false;
+}
+
 export async function creditDirectDeposit(
   campaignId: number,
   depositor: string,
   amountMicro: bigint,
+  opts?: { waitForFundsMs?: number },
 ): Promise<string | null> {
   const ctx = getRelayerWalletClient();
   if (!ctx) return null;
+
+  const waitMs = opts?.waitForFundsMs ?? 60_000;
+  if (waitMs > 0) {
+    const ready = await waitForUnallocatedUsdc(amountMicro, waitMs);
+    if (!ready) {
+      logger.error(
+        { campaignId, amountMicro: amountMicro.toString(), waitMs },
+        "Timed out waiting for USDC in escrow before credit",
+      );
+      return null;
+    }
+  }
 
   try {
     const txHash = await ctx.client.writeContract({

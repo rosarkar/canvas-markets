@@ -141,6 +141,22 @@ export async function createCanvasTables(): Promise<void> {
         tx_count        INT NOT NULL,
         status          TEXT NOT NULL DEFAULT 'completed'
       );
+
+      CREATE TABLE IF NOT EXISTS campaign_topups (
+        topup_id        SERIAL PRIMARY KEY,
+        advertiser_id   INT NOT NULL REFERENCES advertiser_budgets(advertiser_id),
+        verifications   INT NOT NULL,
+        amount_micro    BIGINT NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'confirmed', 'expired', 'failed')),
+        credit_tx_hash  TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_campaign_topups_pending
+        ON campaign_topups (advertiser_id, status) WHERE status = 'pending';
+
+      ALTER TABLE payment_credits ADD COLUMN IF NOT EXISTS topup_id INT REFERENCES campaign_topups(topup_id);
     `);
   } finally {
     client.release();

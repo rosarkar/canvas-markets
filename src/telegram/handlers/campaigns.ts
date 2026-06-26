@@ -35,7 +35,7 @@ export function registerCampaignHandlers(bot: Bot): void {
     );
     await ctx.reply(
       `**Your campaigns**\n\n${lines.join("\n\n")}\n\n` +
-        `/pause <id> · /resume <id> · /withdraw <id>`,
+        `/topup — add budget · /pause <id> · /resume <id> · /withdraw <id>`,
       { parse_mode: "Markdown" },
     );
   });

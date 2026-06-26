@@ -80,6 +80,7 @@ export function registerStartHandler(bot: Bot): void {
         `Dashboard: ${origin}/group-owner\n\n` +
         "📢 *Advertisers*\n" +
         "/buy — launch a verified-join campaign\n" +
+        "/topup — add budget to your ads\n" +
         "/link 0x... — connect your wallet for the dashboard\n" +
         `Dashboard: ${origin}/advertiser\n\n` +
         "━━━━━━━━━━━━━━\n" +

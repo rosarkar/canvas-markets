@@ -14,13 +14,14 @@ depositRouter.get("/api/deposit/config", (_req: Request, res: Response) => {
   res.json({ escrowAddress: escrow, chainId: 8453, chainName: "Base" });
 });
 
-depositRouter.post("/api/deposit/confirm", async (req: Request, res: Response) => {
-  const { paymentId, campaignId, amountMicro, exp, sig } = req.body as {
+  depositRouter.post("/api/deposit/confirm", async (req: Request, res: Response) => {
+  const { paymentId, campaignId, amountMicro, exp, sig, topup } = req.body as {
     paymentId?: string;
     campaignId?: number | string;
     amountMicro?: string | number;
     exp?: string | number;
     sig?: string;
+    topup?: number | string;
   };
 
   if (!paymentId || campaignId == null || amountMicro == null || exp == null || !sig) {
@@ -35,6 +36,7 @@ depositRouter.post("/api/deposit/confirm", async (req: Request, res: Response) =
       amountMicro: BigInt(String(amountMicro)),
       expiryMs: Number(exp),
       sig,
+      topupId: topup != null ? Number(topup) : undefined,
     });
     res.status(result.ok ? 200 : 400).json(result);
   } catch (err) {

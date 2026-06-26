@@ -4,7 +4,10 @@ import { base } from "viem/chains";
 import { db } from "@/db.js";
 import {
   confirmCampaignDeposit,
+  confirmTopUpDeposit,
   expirePendingDeposits,
+  expirePendingTopUps,
+  findPendingTopUpForDeposit,
   getPendingCampaignById,
   type PendingCampaign,
 } from "@/adapters/bidding.js";
@@ -64,47 +67,76 @@ async function notifyOutbid(
   }
 }
 
+async function notifyTopUpComplete(campaignId: number, addedMicro: bigint): Promise<void> {
+  const updated = await getPendingCampaignById(campaignId);
+  if (!updated?.advertiserTgId) return;
+  try {
+    await getBot().api.sendMessage(
+      Number(updated.advertiserTgId),
+      `✅ **+$${fromMicroUnits(addedMicro).toFixed(2)} added to campaign #${campaignId}**\n\n` +
+        `New balance: ${formatUsd(updated.remainingBudget)} remaining.`,
+      { parse_mode: "Markdown" },
+    );
+  } catch (err) {
+    logger.warn({ err, advertiserId: campaignId }, "Failed to DM advertiser on top-up");
+  }
+}
+
 async function processDepositLog(
   campaignId: number,
   amount: bigint,
   txHash: string,
 ): Promise<void> {
-  const pending = await getPendingCampaignById(campaignId);
-  if (!pending || pending.campaignStatus !== "pending_deposit") return;
+  const campaign = await getPendingCampaignById(campaignId);
+  if (!campaign) return;
 
-  if (amount < pending.expectedDepositMicro) {
-    logger.warn(
-      { campaignId, amount: amount.toString(), expected: pending.expectedDepositMicro.toString() },
-      "Deposit amount below expected — waiting for full amount",
-    );
+  if (campaign.campaignStatus === "pending_deposit") {
+    if (amount < campaign.expectedDepositMicro) {
+      logger.warn(
+        { campaignId, amount: amount.toString(), expected: campaign.expectedDepositMicro.toString() },
+        "Deposit amount below expected — waiting for full amount",
+      );
+      return;
+    }
+
+    const result = await confirmCampaignDeposit(campaignId, txHash, amount);
+    if (!result.confirmed) return;
+
+    logger.info({ campaignId, txHash, amount: amount.toString() }, "Campaign deposit confirmed");
+
+    const updated = await getPendingCampaignById(campaignId);
+    if (updated) await notifyCampaignLive(updated);
+
+    if (result.displacedAdvertiserTgId && updated) {
+      await notifyOutbid(
+        result.displacedAdvertiserTgId,
+        `Group #${updated.groupId}`,
+        updated.bidPerVerification,
+      );
+    }
     return;
   }
 
-  const result = await confirmCampaignDeposit(campaignId, txHash, amount);
+  const topup = await findPendingTopUpForDeposit(campaignId, amount);
+  if (!topup) return;
+
+  const result = await confirmTopUpDeposit(topup.topupId, txHash, amount);
   if (!result.confirmed) return;
 
-  logger.info({ campaignId, txHash, amount: amount.toString() }, "Campaign deposit confirmed");
-
+  logger.info({ campaignId, topupId: topup.topupId, txHash }, "Campaign top-up confirmed");
   const updated = await getPendingCampaignById(campaignId);
-  if (updated) await notifyCampaignLive(updated);
-
-  if (result.displacedAdvertiserTgId && updated) {
-    await notifyOutbid(
-      result.displacedAdvertiserTgId,
-      `Group #${updated.groupId}`,
-      updated.bidPerVerification,
-    );
-  }
+  if (updated) await notifyTopUpComplete(campaignId, amount);
 }
 
 async function recoverFailedPaymentCredits(): Promise<void> {
   const rows = await db.query<{
     payment_id: string;
     campaign_id: number;
+    topup_id: number | null;
     amount_micro: string;
     sender: string | null;
   }>(
-    `SELECT payment_id, campaign_id, amount_micro, sender
+    `SELECT payment_id, campaign_id, topup_id, amount_micro, sender
      FROM payment_credits
      WHERE status = 'failed'
        AND created_at > NOW() - INTERVAL '24 hours'`,
@@ -120,8 +152,7 @@ async function recoverFailedPaymentCredits(): Promise<void> {
     if (free < amountMicro) continue;
 
     const pending = await getPendingCampaignById(row.campaign_id);
-    if (!pending || pending.campaignStatus !== "pending_deposit") continue;
-    if (amountMicro !== pending.expectedDepositMicro) continue;
+    if (!pending) continue;
 
     const depositor = row.sender;
     if (!depositor) continue;
@@ -135,6 +166,18 @@ async function recoverFailedPaymentCredits(): Promise<void> {
       `UPDATE payment_credits SET status = 'confirmed', credit_tx_hash = $2 WHERE payment_id = $1`,
       [row.payment_id, txHash],
     );
+
+    if (row.topup_id != null) {
+      const topupResult = await confirmTopUpDeposit(row.topup_id, txHash, amountMicro);
+      if (!topupResult.confirmed) continue;
+      logger.info({ campaignId: row.campaign_id, topupId: row.topup_id, txHash }, "Recovered failed top-up credit");
+      const updated = await getPendingCampaignById(row.campaign_id);
+      if (updated) await notifyTopUpComplete(row.campaign_id, amountMicro);
+      continue;
+    }
+
+    if (pending.campaignStatus !== "pending_deposit") continue;
+    if (amountMicro !== pending.expectedDepositMicro) continue;
 
     const result = await confirmCampaignDeposit(row.campaign_id, txHash, amountMicro);
     if (!result.confirmed) continue;
@@ -234,5 +277,8 @@ export function startDepositMonitor(): void {
 
   setInterval(() => {
     void expirePendingDepositCampaigns();
+    void expirePendingTopUps(config.payments.depositTtlMs).then((n) => {
+      if (n > 0) logger.info({ count: n }, "Expired pending top-ups");
+    });
   }, 60_000);
 }

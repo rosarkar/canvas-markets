@@ -303,3 +303,179 @@ export async function withdrawCampaign(
     client.release();
   }
 }
+
+export interface PendingTopUp {
+  topupId: number;
+  advertiserId: number;
+  verifications: number;
+  amountMicro: bigint;
+  status: string;
+}
+
+export async function listTopUpEligibleCampaigns(
+  advertiserTgId: bigint,
+): Promise<AdvertiserCampaignRow[]> {
+  const rows = await listCampaignsForAdvertiser(advertiserTgId);
+  return rows.filter((c) => ["active", "paused", "exhausted"].includes(c.campaignStatus));
+}
+
+export async function getCampaignOwnedByAdvertiser(
+  advertiserId: number,
+  advertiserTgId: bigint,
+): Promise<AdvertiserCampaignRow | null> {
+  const rows = await listCampaignsForAdvertiser(advertiserTgId);
+  return rows.find((c) => c.advertiserId === advertiserId) ?? null;
+}
+
+export async function createPendingTopUp(input: {
+  advertiserId: number;
+  advertiserTgId: bigint;
+  verifications: number;
+}): Promise<{ topupId: number; amountMicro: bigint } | null> {
+  const campaign = await getCampaignOwnedByAdvertiser(input.advertiserId, input.advertiserTgId);
+  if (!campaign || !["active", "paused", "exhausted"].includes(campaign.campaignStatus)) {
+    return null;
+  }
+
+  const amountMicro = campaign.bidPerVerification * BigInt(input.verifications);
+  const res = await db.query<{ topup_id: number }>(
+    `INSERT INTO campaign_topups (advertiser_id, verifications, amount_micro, status)
+     VALUES ($1, $2, $3, 'pending')
+     RETURNING topup_id`,
+    [input.advertiserId, input.verifications, amountMicro.toString()],
+  );
+  return { topupId: res.rows[0]!.topup_id, amountMicro };
+}
+
+export async function getPendingTopUpById(topupId: number): Promise<PendingTopUp | null> {
+  const res = await db.query<{
+    topup_id: number;
+    advertiser_id: number;
+    verifications: number;
+    amount_micro: string;
+    status: string;
+  }>(`SELECT * FROM campaign_topups WHERE topup_id = $1`, [topupId]);
+
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    topupId: row.topup_id,
+    advertiserId: row.advertiser_id,
+    verifications: row.verifications,
+    amountMicro: BigInt(row.amount_micro),
+    status: row.status,
+  };
+}
+
+export async function findPendingTopUpForDeposit(
+  advertiserId: number,
+  amountMicro: bigint,
+): Promise<PendingTopUp | null> {
+  const res = await db.query<{
+    topup_id: number;
+    advertiser_id: number;
+    verifications: number;
+    amount_micro: string;
+    status: string;
+  }>(
+    `SELECT * FROM campaign_topups
+     WHERE advertiser_id = $1 AND amount_micro = $2 AND status = 'pending'
+     ORDER BY created_at DESC LIMIT 1`,
+    [advertiserId, amountMicro.toString()],
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    topupId: row.topup_id,
+    advertiserId: row.advertiser_id,
+    verifications: row.verifications,
+    amountMicro: BigInt(row.amount_micro),
+    status: row.status,
+  };
+}
+
+export async function confirmTopUpDeposit(
+  topupId: number,
+  txHash: string,
+  depositedAmount: bigint,
+): Promise<{ confirmed: boolean; advertiserTgId: bigint | null }> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const topupRes = await client.query<{
+      advertiser_id: number;
+      amount_micro: string;
+      status: string;
+    }>(`SELECT advertiser_id, amount_micro, status FROM campaign_topups WHERE topup_id = $1 FOR UPDATE`, [
+      topupId,
+    ]);
+    const topup = topupRes.rows[0];
+    if (!topup || topup.status !== "pending") {
+      await client.query("ROLLBACK");
+      return { confirmed: false, advertiserTgId: null };
+    }
+
+    const expected = BigInt(topup.amount_micro);
+    if (depositedAmount < expected) {
+      await client.query("ROLLBACK");
+      return { confirmed: false, advertiserTgId: null };
+    }
+
+    const campaignRes = await client.query<{
+      remaining_budget: string;
+      campaign_status: string;
+      advertiser_tg_id: string | null;
+    }>(`SELECT remaining_budget, campaign_status, advertiser_tg_id FROM advertiser_budgets WHERE advertiser_id = $1 FOR UPDATE`, [
+      topup.advertiser_id,
+    ]);
+    const campaign = campaignRes.rows[0];
+    if (!campaign || !["active", "paused", "exhausted"].includes(campaign.campaign_status)) {
+      await client.query("ROLLBACK");
+      return { confirmed: false, advertiserTgId: null };
+    }
+
+    const newBudget = BigInt(campaign.remaining_budget) + depositedAmount;
+    const newStatus =
+      campaign.campaign_status === "paused"
+        ? "paused"
+        : newBudget > 0n
+          ? "active"
+          : campaign.campaign_status;
+
+    await client.query(
+      `UPDATE advertiser_budgets
+       SET remaining_budget = $2,
+           campaign_status = $3,
+           updated_at = NOW()
+       WHERE advertiser_id = $1`,
+      [topup.advertiser_id, newBudget.toString(), newStatus],
+    );
+
+    await client.query(
+      `UPDATE campaign_topups SET status = 'confirmed', credit_tx_hash = $2 WHERE topup_id = $1`,
+      [topupId, txHash],
+    );
+
+    await client.query("COMMIT");
+    return {
+      confirmed: true,
+      advertiserTgId: campaign.advertiser_tg_id ? BigInt(campaign.advertiser_tg_id) : null,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function expirePendingTopUps(ttlMs: number): Promise<number> {
+  const cutoff = new Date(Date.now() - ttlMs);
+  const res = await db.query(
+    `UPDATE campaign_topups SET status = 'expired'
+     WHERE status = 'pending' AND created_at < $1`,
+    [cutoff],
+  );
+  return res.rowCount ?? 0;
+}

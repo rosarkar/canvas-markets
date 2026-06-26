@@ -27,7 +27,7 @@
   <p class="muted">Fund your campaign with USDC on Base</p>
 
   <div class="card">
-    <div class="muted">Campaign #<span id="campaign-id">—</span></div>
+    <div class="muted">Campaign #<span id="campaign-id">—</span><span id="topup-label"></span></div>
     <div class="amount" id="amount-display">—</div>
     <p class="muted">One-tap pay with your Base Account. Gas sponsored.</p>
     <button id="pay-btn" type="button">Pay with Base</button>
@@ -39,6 +39,7 @@
 
     const params = new URLSearchParams(location.search);
     const campaignId = params.get("campaign");
+    const topupId = params.get("topup");
     const amountMicro = params.get("amount");
     const exp = params.get("exp");
     const sig = params.get("sig");
@@ -65,6 +66,9 @@
     } else {
       document.getElementById("campaign-id").textContent = campaignId;
       document.getElementById("amount-display").textContent = "$" + microToUsd(amountMicro) + " USDC";
+      if (topupId) {
+        document.getElementById("topup-label").textContent = " · add budget";
+      }
     }
 
     let escrowAddress = null;
@@ -87,6 +91,7 @@
           amountMicro,
           exp: Number(exp),
           sig,
+          topup: topupId ? Number(topupId) : undefined,
         }),
       });
       const data = await res.json();

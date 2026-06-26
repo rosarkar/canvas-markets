@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 
-import { getTopBidForGroup, placeBid } from "@/adapters/bidding.js";
+import { getTopBidForGroup, placeBid, listTopUpEligibleCampaigns, getCampaignOwnedByAdvertiser, createPendingTopUp } from "@/adapters/bidding.js";
 import { listActiveGroups } from "@/adapters/groups.adapter.js";
 import { getAdvertiserByTgId } from "@/adapters/advertisers.adapter.js";
 import { createTemplate, getTemplateById, listTemplatesForAdvertiser } from "@/adapters/templates.adapter.js";
@@ -17,18 +17,21 @@ import {
   type TaskPayload,
 } from "@/services/verification-tasks.js";
 import { getEscrowAddress } from "@/services/escrow.js";
-import { buildDepositPageUrl } from "@/utils/deposit-sign.js";
+import { buildDepositPageUrl, buildTopUpDepositPageUrl } from "@/utils/deposit-sign.js";
 import { formatUsdMicro, fromMicroUnits, parseBidInput } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
 
 type BuyStep =
+  | "choose_mode"
   | "group"
   | "quantity"
   | "bid"
   | "template_choice"
   | "collect"
   | "name_template"
-  | "confirm";
+  | "confirm"
+  | "topup_quantity"
+  | "topup_confirm";
 
 interface FieldSpec {
   key: string;
@@ -39,6 +42,9 @@ interface FieldSpec {
 }
 
 interface BuySession {
+  mode?: "new" | "topup";
+  advertiserId?: number;
+  remainingBudget?: bigint;
   step: BuyStep;
   groupId?: number;
   groupTitle?: string;
@@ -104,6 +110,52 @@ export function buildDepositMessage(input: {
     `Tap **Pay with Base** to fund your campaign in one tap.\n\n` +
     `Need USDC? Buy on Coinbase and withdraw to Base network.\n\n` +
     `Expires in 2 hours if no deposit is received.`;
+
+  return { text, keyboard };
+}
+
+export function buildTopUpDepositMessage(input: {
+  advertiserId: number;
+  topupId: number;
+  expectedDepositMicro: bigint;
+  bidMicroUnits: bigint;
+  quantity: number;
+  groupTitle: string;
+  remainingBudget: bigint;
+}): { text: string; keyboard: InlineKeyboard } {
+  const escrow = getEscrowAddress();
+  if (!escrow) {
+    return {
+      text: "Escrow not configured. Set ESCROW_CONTRACT_ADDRESS on the server.",
+      keyboard: new InlineKeyboard(),
+    };
+  }
+
+  const totalUsd = formatUsd(input.expectedDepositMicro);
+  let depositUrl: string;
+  try {
+    depositUrl = buildTopUpDepositPageUrl(
+      input.topupId,
+      input.advertiserId,
+      input.expectedDepositMicro,
+    );
+  } catch {
+    depositUrl = "";
+  }
+
+  const keyboard = new InlineKeyboard();
+  if (depositUrl) {
+    keyboard.url("Pay with Base", depositUrl).row();
+  }
+  keyboard.url("View escrow on Basescan", `https://basescan.org/address/${escrow}`);
+
+  const text =
+    `**Add budget to campaign #${input.advertiserId}**\n\n` +
+    `Group: **${input.groupTitle}**\n` +
+    `• +${input.quantity} verification(s) @ ${formatUsd(input.bidMicroUnits)} each\n` +
+    `• Total: **${totalUsd} USDC** on Base\n` +
+    `• Current balance: ${formatUsd(input.remainingBudget)}\n\n` +
+    `Tap **Pay with Base** to add budget. Expires in 2 hours if unpaid.`;
 
   return { text, keyboard };
 }
@@ -305,6 +357,105 @@ async function showConfirm(
   );
 }
 
+async function showGroupPicker(
+  ctx: { reply: (text: string, extra?: object) => Promise<unknown>; api: Bot["api"] },
+  fromId: number,
+): Promise<void> {
+  const groups = await listActiveGroups();
+  if (groups.length === 0) {
+    await ctx.reply("No active groups registered yet. Group owners must /register first.");
+    return;
+  }
+
+  sessions.set(fromId, { step: "group", mode: "new", draft: {}, fieldQueue: [], listBuffer: [] });
+
+  const keyboard = new InlineKeyboard();
+  for (const group of groups) {
+    const topBid = await getTopBidForGroup(group.groupId);
+    const topLabel = topBid ? formatUsd(topBid.bidPerVerification) : "none";
+    let title = `Group #${group.groupId}`;
+    try {
+      const chat = await ctx.api.getChat(Number(group.tgGroupId));
+      if (chat.type !== "private" && "title" in chat) {
+        title = chat.title ?? title;
+      }
+    } catch {
+      /* ignore */
+    }
+    keyboard
+      .text(`${title} (top: ${topLabel})`, `buy:group:${group.groupId}:${encodeURIComponent(title)}`)
+      .row();
+  }
+
+  await ctx.reply(
+    "**New campaign**\n\nPick a target group. You'll set quantity, bid per verification, and your verification template.",
+    { parse_mode: "Markdown", reply_markup: keyboard },
+  );
+}
+
+async function showBuyEntryMenu(
+  ctx: { reply: (text: string, extra?: object) => Promise<unknown>; api: Bot["api"] },
+  fromId: number,
+  topUpOnly: boolean,
+): Promise<void> {
+  const myCampaigns = await listTopUpEligibleCampaigns(BigInt(fromId));
+
+  if (topUpOnly && myCampaigns.length === 0) {
+    await ctx.reply("No campaigns to top up yet. Send /buy to create one.");
+    return;
+  }
+
+  if (myCampaigns.length === 0) {
+    await showGroupPicker(ctx, fromId);
+    return;
+  }
+
+  sessions.set(fromId, { step: "choose_mode", draft: {}, fieldQueue: [], listBuffer: [] });
+
+  const keyboard = new InlineKeyboard();
+  for (const c of myCampaigns) {
+    const status =
+      c.campaignStatus === "exhausted"
+        ? " · exhausted"
+        : c.campaignStatus === "paused"
+          ? " · paused"
+          : "";
+    keyboard
+      .text(
+        `#${c.advertiserId} ${c.groupTitle ?? "Group"} · ${formatUsd(c.remainingBudget)} left${status}`,
+        `buy:topup:${c.advertiserId}`,
+      )
+      .row();
+  }
+  if (!topUpOnly) {
+    keyboard.text("➕ New campaign", "buy:new").row();
+  }
+
+  const intro = topUpOnly
+    ? "**Add budget to your ads**\n\nPick a campaign, then choose how many more verifications to fund."
+    : "**Advertiser buy flow**\n\n**Your ads** — add budget to keep running, or start a new campaign:";
+
+  await ctx.reply(intro, { parse_mode: "Markdown", reply_markup: keyboard });
+}
+
+async function showTopUpConfirm(
+  ctx: { reply: (text: string, extra?: object) => Promise<unknown> },
+  session: BuySession,
+): Promise<void> {
+  const total = session.bidMicroUnits! * BigInt(session.quantity!);
+  const keyboard = new InlineKeyboard()
+    .text("Confirm top-up", "buy:topup_confirm:yes")
+    .text("Cancel", "buy:topup_confirm:no");
+  await ctx.reply(
+    `**Add budget to campaign #${session.advertiserId}**\n\n` +
+      `Group: ${session.groupTitle}\n` +
+      `• +${session.quantity} verifications @ ${formatUsd(session.bidMicroUnits!)} each\n` +
+      `• Total: ${formatUsd(total)} USDC\n` +
+      `• Current balance: ${formatUsd(session.remainingBudget ?? 0n)}`,
+    { parse_mode: "Markdown", reply_markup: keyboard },
+  );
+}
+
 export function registerBuyHandler(bot: Bot): void {
   bot.command("buy", async (ctx) => {
     const fromId = ctx.from?.id;
@@ -313,36 +464,17 @@ export function registerBuyHandler(bot: Bot): void {
       return;
     }
 
-    const groups = await listActiveGroups();
-    if (groups.length === 0) {
-      await ctx.reply("No active groups registered yet. Group owners must /register first.");
+    await showBuyEntryMenu(ctx, fromId, false);
+  });
+
+  bot.command("topup", async (ctx) => {
+    const fromId = ctx.from?.id;
+    if (!fromId || ctx.chat?.type !== "private") {
+      await ctx.reply("Send /topup in a private chat.");
       return;
     }
 
-    sessions.set(fromId, { step: "group", draft: {}, fieldQueue: [], listBuffer: [] });
-
-    const keyboard = new InlineKeyboard();
-    for (const group of groups) {
-      const topBid = await getTopBidForGroup(group.groupId);
-      const topLabel = topBid ? formatUsd(topBid.bidPerVerification) : "none";
-      let title = `Group #${group.groupId}`;
-      try {
-        const chat = await ctx.api.getChat(Number(group.tgGroupId));
-        if (chat.type !== "private" && "title" in chat) {
-          title = chat.title ?? title;
-        }
-      } catch {
-        /* ignore */
-      }
-      keyboard
-        .text(`${title} (top: ${topLabel})`, `buy:group:${group.groupId}:${encodeURIComponent(title)}`)
-        .row();
-    }
-
-    await ctx.reply(
-      "**Advertiser buy flow**\n\nPick a target group. You'll set quantity, bid per verification, and your verification template.",
-      { parse_mode: "Markdown", reply_markup: keyboard },
-    );
+    await showBuyEntryMenu(ctx, fromId, true);
   });
 
   bot.on("callback_query:data", async (ctx, next) => {
@@ -356,6 +488,37 @@ export function registerBuyHandler(bot: Bot): void {
     const session = sessions.get(fromId);
     if (!session) {
       await ctx.answerCallbackQuery({ text: "Session expired. Send /buy again.", show_alert: true });
+      return;
+    }
+
+    if (data === "buy:new") {
+      await ctx.answerCallbackQuery();
+      await showGroupPicker(ctx, fromId);
+      return;
+    }
+
+    if (data.startsWith("buy:topup:")) {
+      const advertiserId = Number(data.split(":")[2]);
+      const campaign = await getCampaignOwnedByAdvertiser(advertiserId, BigInt(fromId));
+      if (!campaign) {
+        await ctx.answerCallbackQuery({ text: "Campaign not found.", show_alert: true });
+        return;
+      }
+      session.mode = "topup";
+      session.advertiserId = advertiserId;
+      session.groupId = campaign.groupId;
+      session.groupTitle = campaign.groupTitle ?? `Group #${campaign.groupId}`;
+      session.bidMicroUnits = campaign.bidPerVerification;
+      session.remainingBudget = campaign.remainingBudget;
+      session.step = "topup_quantity";
+      sessions.set(fromId, session);
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        `**Campaign #${advertiserId}** · ${session.groupTitle}\n\n` +
+          `Bid: ${formatUsd(campaign.bidPerVerification)}/join · Balance: ${formatUsd(campaign.remainingBudget)}\n\n` +
+          `How many **additional** verifications do you want to fund? (minimum ${MIN_QUANTITY})`,
+        { parse_mode: "Markdown" },
+      );
       return;
     }
 
@@ -402,6 +565,62 @@ export function registerBuyHandler(bot: Bot): void {
       sessions.set(fromId, session);
       await ctx.answerCallbackQuery();
       await promptNextField(ctx, session, fromId);
+      return;
+    }
+
+    if (data === "buy:topup_confirm:yes") {
+      await ctx.answerCallbackQuery();
+      if (!session.advertiserId || !session.quantity || !session.bidMicroUnits) {
+        await ctx.reply("Incomplete session. Send /topup to start over.");
+        sessions.delete(fromId);
+        return;
+      }
+
+      try {
+        const topup = await createPendingTopUp({
+          advertiserId: session.advertiserId,
+          advertiserTgId: BigInt(fromId),
+          verifications: session.quantity,
+        });
+        if (!topup) {
+          await ctx.reply("Could not create top-up. Send /topup to try again.");
+          sessions.delete(fromId);
+          return;
+        }
+
+        const { text, keyboard } = buildTopUpDepositMessage({
+          advertiserId: session.advertiserId,
+          topupId: topup.topupId,
+          expectedDepositMicro: topup.amountMicro,
+          bidMicroUnits: session.bidMicroUnits,
+          quantity: session.quantity,
+          groupTitle: session.groupTitle ?? `Campaign #${session.advertiserId}`,
+          remainingBudget: session.remainingBudget ?? 0n,
+        });
+
+        await ctx.reply(text, { parse_mode: "Markdown", reply_markup: keyboard });
+        logger.info(
+          {
+            advertiserId: session.advertiserId,
+            topupId: topup.topupId,
+            quantity: session.quantity,
+            fromId,
+          },
+          "Campaign top-up pending deposit",
+        );
+      } catch (err) {
+        logger.error({ err }, "createPendingTopUp failed");
+        await ctx.reply("Could not create top-up. Please try again.");
+      }
+
+      sessions.delete(fromId);
+      return;
+    }
+
+    if (data === "buy:topup_confirm:no") {
+      await ctx.answerCallbackQuery();
+      sessions.delete(fromId);
+      await ctx.reply("Top-up cancelled.");
       return;
     }
 
@@ -499,6 +718,24 @@ export function registerBuyHandler(bot: Bot): void {
     }
 
     const text = ctx.message.text.trim();
+
+    if (session.step === "choose_mode") {
+      await ctx.reply("Use the buttons above to pick a campaign or start a new one.");
+      return;
+    }
+
+    if (session.step === "topup_quantity") {
+      const qty = Number.parseInt(text, 10);
+      if (!Number.isFinite(qty) || qty < MIN_QUANTITY) {
+        await ctx.reply(`Enter a whole number ≥ ${MIN_QUANTITY}.`);
+        return;
+      }
+      session.quantity = qty;
+      session.step = "topup_confirm";
+      sessions.set(fromId, session);
+      await showTopUpConfirm(ctx, session);
+      return;
+    }
 
     if (session.step === "quantity") {
       const qty = Number.parseInt(text, 10);

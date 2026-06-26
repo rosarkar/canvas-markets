@@ -357,7 +357,7 @@ async function showConfirm(
   );
 }
 
-async function showGroupPicker(
+export async function showGroupPicker(
   ctx: { reply: (text: string, extra?: object) => Promise<unknown>; api: Bot["api"] },
   fromId: number,
 ): Promise<void> {
@@ -393,7 +393,7 @@ async function showGroupPicker(
   );
 }
 
-async function showBuyEntryMenu(
+export async function showBuyEntryMenu(
   ctx: { reply: (text: string, extra?: object) => Promise<unknown>; api: Bot["api"] },
   fromId: number,
   topUpOnly: boolean,

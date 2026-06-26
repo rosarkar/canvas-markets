@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 
 import { config } from "@/config/index.js";
 import { getGroupById } from "@/adapters/groups.adapter.js";
@@ -81,11 +81,20 @@ export function registerStartHandler(bot: Bot): void {
         "📢 *Advertisers*\n" +
         "/buy — launch a verified-join campaign\n" +
         "/topup — add budget to your ads\n" +
+        "/campaigns — manage ads, pause, or withdraw refunds\n" +
         "/link 0x... — connect your wallet for the dashboard\n" +
         `Dashboard: ${origin}/advertiser\n\n` +
         "━━━━━━━━━━━━━━\n" +
         "Follow us: @canvas\\_protocol on X",
-      { parse_mode: "Markdown" },
+      {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard()
+          .text("📋 My campaigns", "campaign:list")
+          .text("💰 Withdraw refund", "campaign:withdraw_menu")
+          .row()
+          .text("➕ New campaign", "campaign:buy")
+          .text("📈 Top up", "campaign:topup_menu"),
+      },
     );
   });
 }

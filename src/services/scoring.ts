@@ -40,8 +40,8 @@ export interface KimiMessage {
 }
 
 /**
- * Low-level Kimi chat-completion call shared by scoring and the rules-setup
- * assistant — the one place that owns the actual HTTP request/auth.
+ * Low-level Kimi chat-completion call shared by scoring and the buy assistant —
+ * the one place that owns the actual HTTP request/auth.
  * Throws on any failure; callers decide their own fallback.
  */
 export async function callKimi(

@@ -78,22 +78,37 @@ function formatBinaryReasoningPrompt(payload: BinaryReasoningPayload): string {
   return lines.join("\n");
 }
 
-/** Shown before the captcha task when a group has configured rules. */
-export async function sendRulesGateDm(
+/** Fallback only — most groups have real rules in groups.rules (set via the owner's post-registration rules prompt). */
+const PLACEHOLDER_ADMISSION_RULES = [
+  "Be respectful",
+  "No spam or self-promotion without permission",
+  "Keep it on topic",
+];
+
+/** Shown after verification passes — gates final admission on a single "I agree" tap. */
+export async function sendAdmissionRulesDm(
   api: Api,
   userId: number,
+  verificationId: string,
   group: GroupRow,
   groupTitle: string,
 ): Promise<boolean> {
+  const rules = group.rules.length > 0 ? group.rules : PLACEHOLDER_ADMISSION_RULES;
   const lines = [
-    `📜 **${groupTitle}** — group rules`,
+    "✓ Verified — you're good to go.",
     "",
-    ...group.rules.map((rule, i) => `${i + 1}. ${rule}`),
+    `Before you join, here are the rules for **${groupTitle}**:`,
     "",
-    "Type **I agree** to continue.",
+    ...rules.map((rule) => `- ${rule}`),
+    "",
+    "Tap below to agree and enter.",
   ];
+  const keyboard = new InlineKeyboard().text("I agree ✓", `rules_agree:${verificationId}`);
   try {
-    await api.sendMessage(userId, lines.join("\n"), { parse_mode: "Markdown" });
+    await api.sendMessage(userId, lines.join("\n"), {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    });
     return true;
   } catch {
     return false;
@@ -111,11 +126,17 @@ export async function sendVerificationTaskDm(
 
   try {
     switch (task.taskType) {
+      // TODO: for groups with no active advertiser campaign, Kimi scoring is currently still applied.
+      // In future: bypass Kimi for no-advertiser groups and admit directly on any non-empty response.
       case TaskType.OPEN_TEXT: {
         const payload = task.payload as { prompt: string };
         await api.sendMessage(
           userId,
-          `${header}${payload.prompt}\n\n_Reply with your answer — a sentence or two is enough._`,
+          `👋 Hey! You just requested to join **${groupTitle}**.\n\n` +
+            `This group uses Canvas to verify new members before letting anyone in.\n\n` +
+            `To get access, answer one quick question:\n\n` +
+            `${payload.prompt}\n\n` +
+            `No right or wrong answer — just tell us in your own words.`,
           { parse_mode: "Markdown" },
         );
         return true;

@@ -112,12 +112,8 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
         }
       }
 
-      const successMsg =
-        verification.entryType === "join_request"
-          ? `✅ You're in! Your join request for **${groupTitle}** has been approved.`
-          : `✅ You're in! You can now chat in **${groupTitle}**.`;
-
-      await ctx.reply(successMsg, { parse_mode: "Markdown" });
+      // No "you're in" reply here — completeVerificationPass sends the rules-agreement DM,
+      // which gates the actual admission until the user taps "I agree".
 
       if (payload && taskType === TaskType.PREFERENCE_MC) {
         await sendAgentOfferFollowUp(ctx.api, Number(verification.tgUserId), { taskType, payload });

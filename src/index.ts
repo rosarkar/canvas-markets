@@ -2,7 +2,10 @@ import "@/load-env.js";
 
 import { createCanvasTables } from "@/adapters/schema.js";
 import { connectDb } from "@/db.js";
-import { expireStaleVerifications } from "@/adapters/verification.adapter.js";
+import {
+  expireStaleRulesPending,
+  expireStaleVerifications,
+} from "@/adapters/verification.adapter.js";
 import { getGroupById } from "@/adapters/groups.adapter.js";
 import { startDepositMonitor } from "@/services/deposit-monitor.js";
 import { startPayoutBatchScheduler } from "@/services/payout-batch.js";
@@ -34,6 +37,18 @@ async function main(): Promise<void> {
         }
       })
       .catch((err) => logger.error({ err }, "TTL sweep failed"));
+
+    // Missed the post-verification rules gate — leave the user muted, just log it.
+    expireStaleRulesPending()
+      .then((timedOut) => {
+        for (const row of timedOut) {
+          logger.warn(
+            { verificationId: row.verificationId, tgUserId: row.tgUserId.toString(), groupId: row.groupId },
+            "User did not agree to rules within 10 minutes — left muted",
+          );
+        }
+      })
+      .catch((err) => logger.error({ err }, "Rules-pending TTL sweep failed"));
   }, 60_000);
 
   logger.info("Canvas AI started");

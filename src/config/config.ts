@@ -47,6 +47,8 @@ interface Config {
     COOLDOWN_MS: number;
     MIN_BID_MICROUNITS: bigint;
     MIN_CAMPAIGN_QUANTITY: number;
+    /** Window to tap "I agree" on the post-verification rules gate before being left muted. */
+    RULES_PENDING_TTL_MS: number;
   };
 }
 
@@ -102,5 +104,6 @@ export const config: Config = {
     COOLDOWN_MS: 86_400_000,
     MIN_BID_MICROUNITS: BigInt(process.env.MIN_BID_MICROUNITS ?? "10000"),
     MIN_CAMPAIGN_QUANTITY: Number(process.env.MIN_CAMPAIGN_QUANTITY ?? "1"),
+    RULES_PENDING_TTL_MS: 600_000,
   },
 };

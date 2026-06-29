@@ -117,6 +117,8 @@ export async function transitionState(
     taskPayload?: unknown;
     /** Added on top of locked_bid_price — e.g. a quality bonus for reasoned binary replies. */
     bonusMicroUnits?: bigint;
+    /** Overrides expires_at — e.g. a fresh 10-minute window for the RULES_PENDING gate. */
+    expiresAt?: Date;
   },
 ): Promise<void> {
   await db.query(
@@ -129,6 +131,7 @@ export async function transitionState(
          captcha_correct_option = COALESCE($7, captcha_correct_option),
          task_type = COALESCE($8, task_type),
          task_payload = COALESCE($9, task_payload),
+         expires_at = COALESCE($11, expires_at),
          updated_at = NOW()
      WHERE verification_id = $1`,
     [
@@ -142,6 +145,7 @@ export async function transitionState(
       extra?.taskType ?? null,
       extra?.taskPayload != null ? JSON.stringify(extra.taskPayload) : null,
       extra?.bonusMicroUnits?.toString() ?? null,
+      extra?.expiresAt ?? null,
     ],
   );
 
@@ -166,25 +170,9 @@ export async function getActiveVerificationForUser(
   const res = await db.query(
     `SELECT * FROM verifications
      WHERE tg_user_id = $1 AND group_id = $2
-       AND state NOT IN ('PASSED', 'FAILED', 'TIMED_OUT')
+       AND state NOT IN ('PASSED', 'FAILED', 'TIMED_OUT', 'ADMITTED', 'RULES_TIMED_OUT')
      ORDER BY created_at DESC LIMIT 1`,
     [tgUserId.toString(), groupId],
-  );
-  if (!res.rows[0]) return null;
-  return mapRow(res.rows[0]);
-}
-
-/** Active verification awaiting an "I agree" reply to the group's rules gate. */
-export async function getActiveRulesGateVerificationForUser(
-  tgUserId: bigint,
-): Promise<VerificationRow | null> {
-  const res = await db.query(
-    `SELECT * FROM verifications
-     WHERE tg_user_id = $1
-       AND state = 'RULES_SENT'
-       AND (expires_at IS NULL OR expires_at > NOW())
-     ORDER BY created_at DESC LIMIT 1`,
-    [tgUserId.toString()],
   );
   if (!res.rows[0]) return null;
   return mapRow(res.rows[0]);
@@ -213,7 +201,7 @@ export async function hasPassedVerification(
 ): Promise<boolean> {
   const res = await db.query(
     `SELECT 1 FROM verifications
-     WHERE tg_user_id = $1 AND group_id = $2 AND state = 'PASSED'
+     WHERE tg_user_id = $1 AND group_id = $2 AND state = 'ADMITTED'
      LIMIT 1`,
     [tgUserId.toString(), groupId],
   );
@@ -240,7 +228,7 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
      SET state = 'TIMED_OUT', updated_at = NOW()
      FROM groups g
      WHERE v.group_id = g.group_id
-       AND v.state IN ('DEEP_LINK_SENT', 'RULES_SENT', 'TASK_SENT')
+       AND v.state IN ('DEEP_LINK_SENT', 'TASK_SENT')
        AND v.expires_at < NOW()
      RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id, v.entry_type`,
   );
@@ -258,6 +246,35 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
   return expired;
 }
 
+export interface TimedOutRulesPending {
+  verificationId: string;
+  tgUserId: bigint;
+  groupId: number;
+}
+
+/**
+ * Sweeps RULES_PENDING verifications past their 10-minute window into RULES_TIMED_OUT.
+ * Unlike expireStaleVerifications, this does not kick/decline the user — they're left muted.
+ */
+export async function expireStaleRulesPending(): Promise<TimedOutRulesPending[]> {
+  const res = await db.query<{
+    verification_id: string;
+    tg_user_id: string;
+    group_id: number;
+  }>(
+    `UPDATE verifications
+     SET state = 'RULES_TIMED_OUT', updated_at = NOW()
+     WHERE state = 'RULES_PENDING'
+       AND expires_at < NOW()
+     RETURNING verification_id, tg_user_id, group_id`,
+  );
+  return res.rows.map((row) => ({
+    verificationId: row.verification_id,
+    tgUserId: BigInt(row.tg_user_id),
+    groupId: row.group_id,
+  }));
+}
+
 export async function getRecentlyPassedVerification(
   tgUserId: bigint,
   groupId: number,
@@ -266,7 +283,7 @@ export async function getRecentlyPassedVerification(
   const since = new Date(Date.now() - withinMs);
   const res = await db.query(
     `SELECT * FROM verifications
-     WHERE tg_user_id = $1 AND group_id = $2 AND state = 'PASSED'
+     WHERE tg_user_id = $1 AND group_id = $2 AND state = 'ADMITTED'
        AND updated_at > $3
      ORDER BY updated_at DESC LIMIT 1`,
     [tgUserId.toString(), groupId, since],

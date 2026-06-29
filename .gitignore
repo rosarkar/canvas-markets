@@ -5,3 +5,4 @@ dist
 tsconfig.tsbuildinfo
 out
 cache
+.DS_Store

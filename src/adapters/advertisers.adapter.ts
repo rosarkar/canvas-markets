@@ -68,7 +68,8 @@ export async function getCampaignsForWallet(walletAddress: string): Promise<Camp
      FROM advertiser_budgets ab
      JOIN groups g ON ab.group_id = g.group_id
      LEFT JOIN (
-       SELECT advertiser_id, COUNT(*) FILTER (WHERE state = 'PASSED') AS passed
+       -- PASSED is now followed by a rules-agreement gate; count any post-pass state.
+       SELECT advertiser_id, COUNT(*) FILTER (WHERE state IN ('PASSED', 'RULES_PENDING', 'ADMITTED', 'RULES_TIMED_OUT')) AS passed
        FROM verifications
        GROUP BY advertiser_id
      ) v_stats ON v_stats.advertiser_id = ab.advertiser_id

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Bot, webhookCallback } from "grammy";
 
 import { config } from "@/config/index.js";
+import { registerAdmissionCallbackHandler } from "@/telegram/handlers/admission-callback.js";
 import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
 import { registerBuyHandler } from "@/telegram/handlers/buy.js";
 import { registerCampaignHandlers } from "@/telegram/handlers/campaigns.js";
@@ -14,7 +15,6 @@ import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js"
 import { registerLinkHandler } from "@/telegram/handlers/link.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerRegisterHandler } from "@/telegram/handlers/register.js";
-import { registerRulesSetupHandler } from "@/telegram/handlers/rules-setup.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
 import { registerAgentOfferSkipHandler } from "@/telegram/services/captcha-dm.js";
 import { advertiserRouter } from "@/api/advertiser.js";
@@ -35,7 +35,6 @@ export function startTelegramBot(): void {
 
   registerStartHandler(bot);
   registerRegisterHandler(bot);
-  registerRulesSetupHandler(bot);
   registerBuyHandler(bot);
   registerCampaignHandlers(bot);
   registerLinkHandler(bot);
@@ -44,6 +43,7 @@ export function startTelegramBot(): void {
   registerBotMembershipHandler(bot);
   registerCaptchaCallbackHandler(bot);
   registerAgentOfferSkipHandler(bot);
+  registerAdmissionCallbackHandler(bot);
   registerMessageHandler(bot);
 
   bot.catch((err) => {

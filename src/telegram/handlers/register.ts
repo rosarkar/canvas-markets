@@ -4,11 +4,11 @@ import {
   getGroupByTgId,
   getGroupsByOwnerTgId,
   registerGroup,
+  updateGroupRules,
   updateOwnerWallet,
   type GroupRow,
 } from "@/adapters/groups.adapter.js";
 import { createPortalInviteLink } from "@/telegram/services/portal-invite.js";
-import { startRulesSetup } from "@/telegram/handlers/rules-setup.js";
 import { config } from "@/config/index.js";
 import { logger } from "@/utils/logger.js";
 
@@ -21,6 +21,13 @@ const ADMIN_CHECKLIST =
 
 /** Pending wallet updates awaiting inline-keyboard confirmation. userId → new wallet */
 const pendingWallets = new Map<number, string>();
+
+/** Owners with an open "set custom rules?" prompt awaiting a text reply or Skip tap. userId → groupId */
+const pendingRulesPrompt = new Map<number, number>();
+
+export function hasActivePendingRulesPrompt(userId: number): boolean {
+  return pendingRulesPrompt.has(userId);
+}
 
 function parseWallet(input: string | undefined): string | null {
   const trimmed = input?.trim();
@@ -63,19 +70,49 @@ async function replyWithPortalLink(bot: Bot, chatId: number, extra = ""): Promis
   );
 }
 
-/** Triggers the AI-assisted rules conversation once a group has a real wallet and no rules yet. */
-async function maybeStartRulesSetup(
+/** Asks the owner for custom rules (or Skip) once a group has a real wallet and no rules yet. */
+async function maybeSendRulesPrompt(
   bot: Bot,
   ownerTgId: number,
   group: GroupRow,
   groupTitle: string,
 ): Promise<void> {
   if (group.ownerWallet === PLACEHOLDER_WALLET || group.rules.length > 0) return;
+
+  pendingRulesPrompt.set(ownerTgId, group.groupId);
+  const keyboard = new InlineKeyboard().text("Skip", `rules_prompt:skip:${group.groupId}`);
   try {
-    await startRulesSetup(bot.api, ownerTgId, group, groupTitle);
+    await bot.api.sendMessage(
+      ownerTgId,
+      `Do you want to set custom rules for **${groupTitle}**? These will be shown to every new member after they pass verification.\n\n` +
+        "Send your rules as a message, or tap Skip to use the defaults.",
+      { parse_mode: "Markdown", reply_markup: keyboard },
+    );
   } catch (err) {
-    logger.warn({ err, groupId: group.groupId }, "Failed to start rules setup");
+    pendingRulesPrompt.delete(ownerTgId);
+    logger.warn({ err, groupId: group.groupId }, "Failed to send rules prompt");
   }
+}
+
+/** Handles a DM text reply to the rules prompt. Returns false if no prompt is pending. */
+export async function handlePendingRulesReply(
+  ctx: { from: { id: number }; reply: (text: string, extra?: object) => Promise<unknown> },
+  text: string,
+): Promise<boolean> {
+  const groupId = pendingRulesPrompt.get(ctx.from.id);
+  if (groupId == null) return false;
+
+  const rules = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (rules.length === 0) return false;
+
+  await updateGroupRules(groupId, rules);
+  pendingRulesPrompt.delete(ctx.from.id);
+  await ctx.reply("✅ Rules saved. New members will see these after they pass verification.");
+  logger.info({ groupId, ownerTgId: ctx.from.id, ruleCount: rules.length }, "Group rules set via owner prompt");
+  return true;
 }
 
 export function registerRegisterHandler(bot: Bot): void {
@@ -169,7 +206,7 @@ export function registerRegisterHandler(bot: Bot): void {
       /* Owner hasn't started the bot in DM yet — they'll see the group message */
     }
 
-    await maybeStartRulesSetup(bot, fromId, group, title ?? "your group");
+    await maybeSendRulesPrompt(bot, fromId, group, title ?? "your group");
   });
 
   bot.command("invite", async (ctx) => {
@@ -301,7 +338,7 @@ export function registerRegisterHandler(bot: Bot): void {
         } catch {
           /* ignore */
         }
-        await maybeStartRulesSetup(bot, fromId, groupNeedingRules, groupTitle);
+        await maybeSendRulesPrompt(bot, fromId, groupNeedingRules, groupTitle);
       }
       return;
     }
@@ -314,6 +351,41 @@ export function registerRegisterHandler(bot: Bot): void {
     }
 
     await next();
+  });
+
+  // "Skip" tap on the post-registration rules prompt
+  bot.on("callback_query:data", async (ctx, next) => {
+    const data = ctx.callbackQuery.data;
+    if (!data.startsWith("rules_prompt:skip:")) {
+      await next();
+      return;
+    }
+
+    const fromId = ctx.from.id;
+    const groupId = Number(data.slice("rules_prompt:skip:".length));
+
+    if (pendingRulesPrompt.get(fromId) !== groupId) {
+      await ctx.answerCallbackQuery({ text: "This prompt is no longer active.", show_alert: true });
+      return;
+    }
+
+    pendingRulesPrompt.delete(fromId);
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText("Got it — using default rules.");
+  });
+
+  // Text reply to the post-registration rules prompt
+  bot.on("message:text", async (ctx, next) => {
+    const fromId = ctx.from?.id;
+    if (!fromId || ctx.chat?.type !== "private" || ctx.message.text.startsWith("/")) {
+      await next();
+      return;
+    }
+
+    const handled = await handlePendingRulesReply(ctx, ctx.message.text.trim());
+    if (!handled) {
+      await next();
+    }
   });
 }
 

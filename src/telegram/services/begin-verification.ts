@@ -18,7 +18,7 @@ import {
   type ResolvedVerificationTask,
 } from "@/services/verification-tasks.js";
 import { VerificationState } from "@/services/verification-states.js";
-import { sendRulesGateDm, sendVerificationTaskDm } from "@/telegram/services/captcha-dm.js";
+import { sendVerificationTaskDm } from "@/telegram/services/captcha-dm.js";
 import { sendWelcomeGateMessage } from "@/telegram/services/welcome-gate.js";
 import { restrictUserForCaptcha } from "@/telegram/verification-actions.js";
 import { logger } from "@/utils/logger.js";
@@ -64,18 +64,13 @@ export async function beginVerification(
     entryType,
   });
 
-  const hasRules = group.rules.length > 0;
-  const gateState = hasRules ? VerificationState.RULES_SENT : VerificationState.TASK_SENT;
-
-  await transitionState(verification.verificationId, gateState, {
+  await transitionState(verification.verificationId, VerificationState.TASK_SENT, {
     lockedBidPrice: topBid?.bidPerVerification ?? undefined,
     ...taskToTransitionExtra(task),
   });
 
-  const sendGateDm = (): Promise<boolean> =>
-    hasRules
-      ? sendRulesGateDm(api, user.id, group, groupTitle)
-      : sendVerificationTaskDm(api, user.id, verification.verificationId, task, groupTitle);
+  const sendTaskDm = (): Promise<boolean> =>
+    sendVerificationTaskDm(api, user.id, verification.verificationId, task, groupTitle);
 
   const me = await api.getMe();
   const botUsername = me.username ?? "CanvasProtocolBot";
@@ -92,18 +87,14 @@ export async function beginVerification(
       verification.verificationId,
       botUsername,
     );
-    captchaSentInDm = await sendGateDm();
-    // If a rules gate is pending, leave state as RULES_SENT so the deep-link resume
-    // (start.ts) knows to resend the rules message rather than the task.
-    if (!captchaSentInDm && !hasRules) {
+    captchaSentInDm = await sendTaskDm();
+    if (!captchaSentInDm) {
       await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
     }
   } else {
-    captchaSentInDm = await sendGateDm();
+    captchaSentInDm = await sendTaskDm();
     if (!captchaSentInDm) {
-      if (!hasRules) {
-        await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
-      }
+      await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
       const deepLink = `https://t.me/${botUsername}?start=verify_${verification.verificationId}`;
       const keyboard = new InlineKeyboard().url("Verify to join →", deepLink);
       try {

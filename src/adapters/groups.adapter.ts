@@ -157,13 +157,14 @@ export async function getGroupOwnerStats(ownerWallet: string): Promise<GroupOwne
        ab.bid_per_verification AS top_bid_micro
      FROM groups g
      LEFT JOIN (
+       -- PASSED is now followed by a rules-agreement gate; count/sum any post-pass state.
        SELECT
          group_id,
-         COUNT(*) FILTER (WHERE state = 'PASSED') AS total_verifications,
+         COUNT(*) FILTER (WHERE state IN ('PASSED', 'RULES_PENDING', 'ADMITTED', 'RULES_TIMED_OUT')) AS total_verifications,
          SUM(
            (locked_bid_price * (10000 - $2) / 10000)
          ) FILTER (
-           WHERE state = 'PASSED'
+           WHERE state IN ('PASSED', 'RULES_PENDING', 'ADMITTED', 'RULES_TIMED_OUT')
              AND locked_bid_price IS NOT NULL
              AND payout_status = 'pending'
          ) AS pending_earnings_micro

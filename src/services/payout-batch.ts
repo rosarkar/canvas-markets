@@ -36,10 +36,14 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
       locked_bid_price: string;
       owner_wallet: string;
     }>(
+      // PASSED is now followed by a rules-agreement gate (RULES_PENDING/ADMITTED/RULES_TIMED_OUT) —
+      // billing already settled at PASSED, independent of whether the user later agreed, so
+      // treat any post-pass state as payable.
       `SELECT v.verification_id, v.advertiser_id, v.locked_bid_price, g.owner_wallet
        FROM verifications v
        JOIN groups g ON g.group_id = v.group_id
-       WHERE v.payout_status = 'pending' AND v.state = 'PASSED'
+       WHERE v.payout_status = 'pending'
+         AND v.state IN ('PASSED', 'RULES_PENDING', 'ADMITTED', 'RULES_TIMED_OUT')
          AND v.advertiser_id IS NOT NULL AND v.locked_bid_price IS NOT NULL
        FOR UPDATE SKIP LOCKED`,
     );

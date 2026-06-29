@@ -2,7 +2,6 @@
 export const VerificationState = {
   PENDING: "PENDING",
   DEEP_LINK_SENT: "DEEP_LINK_SENT",
-  RULES_SENT: "RULES_SENT",
   TASK_SENT: "TASK_SENT",
   RESPONSE_RECEIVED: "RESPONSE_RECEIVED",
   STEP1_FIRED: "STEP1_FIRED",
@@ -10,16 +9,21 @@ export const VerificationState = {
   SCORING: "SCORING",
   KIMI_FAILED: "KIMI_FAILED",
   PASSED: "PASSED",
+  /** Scoring passed; user stays muted awaiting a tap on "I agree" to the group rules. */
+  RULES_PENDING: "RULES_PENDING",
+  /** Rules accepted — user has been unmuted / join request approved. Terminal success state. */
+  ADMITTED: "ADMITTED",
   FAILED: "FAILED",
   TIMED_OUT: "TIMED_OUT",
+  /** Missed the RULES_PENDING window. Unlike TIMED_OUT, the user is left muted, not kicked. */
+  RULES_TIMED_OUT: "RULES_TIMED_OUT",
   MUTED: "MUTED",
 } as const;
 
 export type VerificationState = (typeof VerificationState)[keyof typeof VerificationState];
 
-/** Bid price locks when TASK_SENT is written (or RULES_SENT, if a rules gate comes first). */
+/** Bid price locks when TASK_SENT is written. */
 export const BID_LOCK_STATES: VerificationState[] = [
-  VerificationState.RULES_SENT,
   VerificationState.TASK_SENT,
   VerificationState.RESPONSE_RECEIVED,
   VerificationState.STEP1_FIRED,

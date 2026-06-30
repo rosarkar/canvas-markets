@@ -45,6 +45,12 @@
 - 🔄 Switch mode button in both menus, edits message in-place back to mode selector
 - Single-identity users see their menu directly, no mode selector, no switch button
 
+**Rate limiting investigation (not implemented)**
+- Reviewed `handleMemberJoin` join-intercept path and full `verifications` table schema with Claude Code
+- Confirmed no global (cross-group) Telegram user tracking exists anywhere in the schema — every table scopes by `(tg_user_id, group_id)`
+- Confirmed the deferred `user_activity_log` table from June 24 was never built
+- Decided to defer building rate limiting until after today's investor demo — limiting verifications across groups right before showing Joshua Howard multiple live examples would work against the demo. Spec captured under "Pending — Mateo's Side" below.
+
 ---
 
 ### June 28, 2026 (Mateo — commits e43a039 → 644a5f3)
@@ -174,11 +180,19 @@
 ## Pending — Mateo's Side
 
 **Advertiser controls for group owners**
-- Accept/decline individual advertisers before campaign goes live in a group
-- Bid ladder fallback: auto-accept previous leading advertiser when top bidder's budget runs out
+- Group owners should be able to accept or decline individual advertisers from running campaigns in their group
+- Canvas still reviews advertisers for blatantly illegal content as a baseline filter — group owner accept/decline is an additional layer on top of that floor, not a replacement for it
+- Current stage: advertisers are direct relationships, hand-picked by the Canvas team. Long-term model is closer to Facebook/Instagram Ads — an increasingly open, self-serve marketplace as it matures, with group owners retaining the ability to decline advertisers they don't want in their community
+- Option to auto-accept the previous leading advertiser when the current top bidder's budget runs out — so instead of the slot going empty, it falls back down the bid ladder automatically
 
 **Verification rate limiting**
-- One verification attempt per Telegram handle per 12 hours across all Canvas groups
+- Users should be limited to one verification attempt per Telegram handle per 12 hours across all Canvas groups — so if someone tries to join multiple registered groups in quick succession they only get one task in that window. Prevents people from being spammed with verification DMs if they're joining several groups at once.
+- Refinement decided June 29: a user within the 12-hour global cooldown should still be shown the new group's rules and required to tap "I agree" before entering — they skip the captcha task itself, not the rules step.
+- Open question to resolve before building: does the group owner get paid for a cooldown-skip join, or is it treated as unpaid since no fresh verification occurred? Deferred — needs a decision before implementation, not before the spec is written.
+- Investigated June 29: no existing schema supports this. Would need a new table (e.g. `user_verification_cooldowns`, keyed globally on `tg_user_id`) since every existing table scopes by `(tg_user_id, group_id)` pairs, not by user alone. A `user_activity_log` table was discussed June 24 for broader velocity tracking but was never built — this would be narrower in scope (just a last-verified timestamp), not that full table.
+- Deliberately not built yet — would reduce the number of visible verifications across multiple groups during the June 29 Joshua Howard demo. Revisit after.
+
+Both of these touch the bid ladder, escrow logic, and cooldown/state tracking in Postgres — flagged for Mateo rather than risking it on the frontend side.
 
 **Basescan contract verification**
 - `forge verify-contract` on `CanvasEscrowV0.sol` at `0x262ac1a082fd32c83e9b32ff1912ea070ed55890`

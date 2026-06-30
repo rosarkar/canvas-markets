@@ -1,10 +1,11 @@
 import { Bot, InlineKeyboard } from "grammy";
 
 import { config } from "@/config/index.js";
-import { getGroupById } from "@/adapters/groups.adapter.js";
+import { getGroupById, getGroupsByOwnerTgId } from "@/adapters/groups.adapter.js";
 import { getVerificationByToken, transitionState } from "@/adapters/verification.adapter.js";
 import { VerificationState } from "@/services/verification-states.js";
 import { resendCaptchaDm } from "@/telegram/services/begin-verification.js";
+import { buildOwnerMenuKeyboard } from "@/telegram/handlers/menu.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerStartHandler(bot: Bot): void {
@@ -54,6 +55,16 @@ export function registerStartHandler(bot: Bot): void {
 
       logger.info({ verificationId: token, groupId: group.groupId }, "Captcha sent via /start deep link");
       return;
+    }
+
+    // Registered group owners get the owner menu; everyone else sees the welcome screen.
+    const fromId = ctx.from?.id;
+    if (fromId && ctx.chat?.type === "private") {
+      const ownerGroups = await getGroupsByOwnerTgId(BigInt(fromId));
+      if (ownerGroups.length > 0) {
+        await ctx.reply("What would you like to do?", { reply_markup: buildOwnerMenuKeyboard() });
+        return;
+      }
     }
 
     const origin = new URL(config.telegram.webhookUrl).origin;

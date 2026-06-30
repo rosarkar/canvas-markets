@@ -144,6 +144,68 @@ export interface GroupOwnerGroupStats {
   topBid: number | null;
 }
 
+export interface GroupOwnerMenuStats {
+  groupId: number;
+  groupTitle: string | null;
+  portalInviteLink: string | null;
+  verificationsThisWeek: number;
+  totalVerifications: number;
+  pendingEarningsMicro: bigint;
+  topBidMicro: bigint | null;
+}
+
+export async function getGroupOwnerMenuStats(ownerTgId: bigint): Promise<GroupOwnerMenuStats[]> {
+  const res = await db.query(
+    `SELECT
+       g.group_id,
+       g.group_title,
+       g.portal_invite_link,
+       COALESCE(v.total_verifications, 0)::INT AS total_verifications,
+       COALESCE(v.week_verifications, 0)::INT AS week_verifications,
+       COALESCE(v.pending_earnings_micro, 0)::BIGINT AS pending_earnings_micro,
+       ab.bid_per_verification AS top_bid_micro
+     FROM groups g
+     LEFT JOIN (
+       SELECT
+         group_id,
+         COUNT(*) FILTER (WHERE state IN ('PASSED','RULES_PENDING','ADMITTED','RULES_TIMED_OUT')) AS total_verifications,
+         COUNT(*) FILTER (
+           WHERE state IN ('PASSED','RULES_PENDING','ADMITTED','RULES_TIMED_OUT')
+             AND created_at >= NOW() - INTERVAL '7 days'
+         ) AS week_verifications,
+         SUM((locked_bid_price * (10000 - $2) / 10000)) FILTER (
+           WHERE state IN ('PASSED','RULES_PENDING','ADMITTED','RULES_TIMED_OUT')
+             AND locked_bid_price IS NOT NULL
+             AND payout_status = 'pending'
+         ) AS pending_earnings_micro
+       FROM verifications
+       GROUP BY group_id
+     ) v ON v.group_id = g.group_id
+     LEFT JOIN LATERAL (
+       SELECT bid_per_verification
+       FROM advertiser_budgets
+       WHERE group_id = g.group_id
+         AND campaign_status = 'active'
+         AND remaining_budget > 0
+       ORDER BY bid_per_verification DESC
+       LIMIT 1
+     ) ab ON true
+     WHERE g.owner_tg_id = $1 AND g.is_active = true
+     ORDER BY g.group_id`,
+    [ownerTgId.toString(), config.payments.platformFeeBps],
+  );
+
+  return res.rows.map((row) => ({
+    groupId: row.group_id as number,
+    groupTitle: (row.group_title as string | null) ?? null,
+    portalInviteLink: (row.portal_invite_link as string | null) ?? null,
+    totalVerifications: Number(row.total_verifications),
+    verificationsThisWeek: Number(row.week_verifications),
+    pendingEarningsMicro: BigInt(row.pending_earnings_micro ?? 0),
+    topBidMicro: row.top_bid_micro != null ? BigInt(row.top_bid_micro as string) : null,
+  }));
+}
+
 export async function getGroupOwnerStats(ownerWallet: string): Promise<GroupOwnerGroupStats[]> {
   const res = await db.query(
     `SELECT

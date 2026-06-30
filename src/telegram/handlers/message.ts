@@ -11,6 +11,7 @@ import {
 import { VerificationState } from "@/services/verification-states.js";
 import { hasActiveBuyAgentSession } from "@/telegram/handlers/buy-agent.js";
 import { hasActiveBuySession } from "@/telegram/handlers/buy.js";
+import { hasActivePendingMenuWallet } from "@/telegram/handlers/menu.js";
 import { hasActivePendingRulesPrompt } from "@/telegram/handlers/register.js";
 import { parseWebAppData } from "@/telegram/handlers/webapp-data.js";
 import {
@@ -42,7 +43,8 @@ export function registerMessageHandler(bot: Bot): void {
       if (
         !hasActiveBuySession(from.id) &&
         !hasActiveBuyAgentSession(from.id) &&
-        !hasActivePendingRulesPrompt(from.id)
+        !hasActivePendingRulesPrompt(from.id) &&
+        !hasActivePendingMenuWallet(from.id)
       ) {
         const text = ctx.message.text.trim();
         const handled = await handleDmTextResponse(ctx, text);

@@ -9,7 +9,6 @@ import {
   type GroupRow,
 } from "@/adapters/groups.adapter.js";
 import { createPortalInviteLink } from "@/telegram/services/portal-invite.js";
-import { config } from "@/config/index.js";
 import { logger } from "@/utils/logger.js";
 
 const PLACEHOLDER_WALLET = "0x0000000000000000000000000000000000000000";
@@ -27,6 +26,11 @@ const pendingRulesPrompt = new Map<number, number>();
 
 export function hasActivePendingRulesPrompt(userId: number): boolean {
   return pendingRulesPrompt.has(userId);
+}
+
+/** Sets the pending rules state so the menu handler can trigger the rules-edit flow. */
+export function startPendingRulesPrompt(userId: number, groupId: number): void {
+  pendingRulesPrompt.set(userId, groupId);
 }
 
 function parseWallet(input: string | undefined): string | null {
@@ -48,26 +52,6 @@ async function isBotGroupAdmin(bot: Bot, chatId: number): Promise<boolean> {
   const me = await bot.api.getMe();
   const member = await bot.api.getChatMember(chatId, me.id);
   return member.status === "administrator";
-}
-
-async function replyWithPortalLink(bot: Bot, chatId: number, extra = ""): Promise<void> {
-  const group = await getGroupByTgId(BigInt(chatId));
-  if (!group) return;
-
-  const portalLink =
-    group.portalInviteLink ?? (await createPortalInviteLink(bot.api, group));
-
-  const linkNote = portalLink
-    ? `\n\nShare this **verification portal** link:\n${portalLink}`
-    : "\n\nRun /invite to generate a join-request portal link (bot needs **Invite users via link**).";
-
-  await bot.api.sendMessage(
-    chatId,
-    extra +
-      linkNote +
-      "\n\nOpen invite links still work: new members are muted until they verify via DM.",
-    { parse_mode: "Markdown" },
-  );
 }
 
 /** Asks the owner for custom rules (or Skip) once a group has a real wallet and no rules yet. */
@@ -165,41 +149,30 @@ export function registerRegisterHandler(bot: Bot): void {
       "Group registered",
     );
 
-    const walletNote =
-      wallet === PLACEHOLDER_WALLET
-        ? "\n\nSet your Base payout wallet anytime with /wallet 0xYourAddress (here or in DM)."
-        : `\n\nPayout wallet: \`${wallet}\``;
-
     await ctx.reply(
-      `✅ **${title}** is registered.\n\n` +
-        "Rose-style verification:\n" +
-        "• **Portal link** (/invite): captcha in DM before they enter\n" +
-        "• **Open invite**: muted + welcome button → verify in DM\n\n" +
-        `${ADMIN_CHECKLIST}\n` +
-        "Optional: Group Settings → **Chat history for new members** → **Hidden**" +
-        walletNote,
+      `✅ **${title}** is now verified by Canvas. New members will be asked to complete a quick verification before joining.`,
       { parse_mode: "Markdown" },
     );
 
-    await replyWithPortalLink(bot, chat.id);
+    const portalLink = group.portalInviteLink ?? (await createPortalInviteLink(bot.api, group));
+    const portalNote = portalLink
+      ? `Here's your verification portal link — share this instead of a regular invite link:\n${portalLink}`
+      : "Run /invite in your group to generate a portal link (bot needs **Invite users via link** permission).";
+    const walletNote =
+      wallet === PLACEHOLDER_WALLET
+        ? "set or update anytime by DMing me:\n`/wallet 0xYourAddress`"
+        : `\`${wallet}\` — update anytime with:\n\`/wallet 0xNewAddress\``;
 
-    // DM the group owner with next-step checklist
     try {
-      const walletStep =
-        wallet === PLACEHOLDER_WALLET
-          ? "2. Set your payout wallet: /wallet 0xYourBaseAddress"
-          : `2. Payout wallet set ✅ \`${wallet}\` — update anytime with /wallet 0xNewAddress`;
-
-      const dashboardUrl = new URL(config.telegram.webhookUrl).origin + "/group-owner";
       await bot.api.sendMessage(
         fromId,
-        `✅ **${title}** is live on Canvas!\n\n` +
-          "Setup checklist:\n\n" +
-          "1. Share the /invite portal link so new members verify before joining\n" +
-          `${walletStep}\n` +
-          "3. Confirm bot admin permissions: Ban, Restrict Members, Invite via Link\n\n" +
-          `Track verifications and earnings: ${dashboardUrl}\n\n` +
-          "You'll earn USDC for every verified join once advertisers bid on your group.",
+        `✅ **${title}** is registered.\n\n` +
+          `${portalNote}\n\n` +
+          "New members who use a regular invite link will be muted until they verify via DM.\n\n" +
+          `Your payout wallet: ${walletNote}\n\n` +
+          "Bot admin permissions needed: **Ban users**, **Restrict members**, **Invite users via link**.\n\n" +
+          "In @BotFather: **Group Privacy → Disabled** (so join-request DMs work). " +
+          "Optional: Group Settings → **Chat history for new members → Hidden**.",
         { parse_mode: "Markdown" },
       );
     } catch {
@@ -251,6 +224,11 @@ export function registerRegisterHandler(bot: Bot): void {
   bot.command("wallet", async (ctx) => {
     const fromId = ctx.from?.id;
     if (!fromId) return;
+
+    if (ctx.chat?.type !== "private") {
+      await ctx.reply("Please set your wallet in our DM to keep it private.");
+      return;
+    }
 
     const wallet = parseWallet(ctx.match);
 
@@ -327,9 +305,25 @@ export function registerRegisterHandler(bot: Bot): void {
       );
       logger.info({ ownerTgId: fromId, wallet, groupsUpdated: updated }, "Owner wallet confirmed and updated");
 
-      const groupNeedingRules = (await getGroupsByOwnerTgId(BigInt(fromId))).find(
-        (g) => g.rules.length === 0,
-      );
+      const ownerGroups = await getGroupsByOwnerTgId(BigInt(fromId));
+
+      const primaryGroup = ownerGroups[0];
+      if (primaryGroup) {
+        try {
+          const portalLink =
+            primaryGroup.portalInviteLink ?? (await createPortalInviteLink(bot.api, primaryGroup));
+          if (portalLink) {
+            await bot.api.sendMessage(
+              fromId,
+              `Here's your portal link to share with new members:\n${portalLink}\n\nSave this — anyone who joins via this link will be verified before entering.`,
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const groupNeedingRules = ownerGroups.find((g) => g.rules.length === 0);
       if (groupNeedingRules) {
         let groupTitle = groupNeedingRules.groupTitle ?? "your group";
         try {

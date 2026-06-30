@@ -13,6 +13,7 @@ import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-call
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
 import { registerJoinRequestHandler } from "@/telegram/handlers/join-request.js";
 import { registerLinkHandler } from "@/telegram/handlers/link.js";
+import { registerMenuHandler } from "@/telegram/handlers/menu.js";
 import { registerMessageHandler } from "@/telegram/handlers/message.js";
 import { registerRegisterHandler } from "@/telegram/handlers/register.js";
 import { registerStartHandler } from "@/telegram/handlers/start.js";
@@ -44,6 +45,7 @@ export function startTelegramBot(): void {
   registerCaptchaCallbackHandler(bot);
   registerAgentOfferSkipHandler(bot);
   registerAdmissionCallbackHandler(bot);
+  registerMenuHandler(bot);
   registerMessageHandler(bot);
 
   bot.catch((err) => {

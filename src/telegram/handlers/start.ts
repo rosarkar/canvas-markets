@@ -2,10 +2,11 @@ import { Bot, InlineKeyboard } from "grammy";
 
 import { config } from "@/config/index.js";
 import { getGroupById, getGroupsByOwnerTgId } from "@/adapters/groups.adapter.js";
+import { hasAdvertiserActivity } from "@/adapters/advertisers.adapter.js";
 import { getVerificationByToken, transitionState } from "@/adapters/verification.adapter.js";
 import { VerificationState } from "@/services/verification-states.js";
 import { resendCaptchaDm } from "@/telegram/services/begin-verification.js";
-import { buildOwnerMenuKeyboard } from "@/telegram/handlers/menu.js";
+import { handleDmStart } from "@/telegram/handlers/menu.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerStartHandler(bot: Bot): void {
@@ -57,12 +58,17 @@ export function registerStartHandler(bot: Bot): void {
       return;
     }
 
-    // Registered group owners get the owner menu; everyone else sees the welcome screen.
+    // Known users (owner, advertiser, or both) get the appropriate menu.
+    // New users fall through to the onboarding welcome screen below.
     const fromId = ctx.from?.id;
     if (fromId && ctx.chat?.type === "private") {
-      const ownerGroups = await getGroupsByOwnerTgId(BigInt(fromId));
-      if (ownerGroups.length > 0) {
-        await ctx.reply("What would you like to do?", { reply_markup: buildOwnerMenuKeyboard() });
+      const [ownerGroups, isAdvertiser] = await Promise.all([
+        getGroupsByOwnerTgId(BigInt(fromId)),
+        hasAdvertiserActivity(BigInt(fromId)),
+      ]);
+      const isOwner = ownerGroups.length > 0;
+      if (isOwner || isAdvertiser) {
+        await handleDmStart(ctx.api, fromId, isOwner, isAdvertiser);
         return;
       }
     }

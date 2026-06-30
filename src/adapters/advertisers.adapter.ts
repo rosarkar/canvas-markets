@@ -49,6 +49,18 @@ export interface CampaignSummary {
   createdAt: string;
 }
 
+/** True if the user has linked a wallet OR has ever created a campaign. */
+export async function hasAdvertiserActivity(tgId: bigint): Promise<boolean> {
+  const res = await db.query(
+    `SELECT 1 FROM advertisers WHERE tg_id = $1
+     UNION ALL
+     SELECT 1 FROM advertiser_budgets WHERE advertiser_tg_id = $1
+     LIMIT 1`,
+    [tgId.toString()],
+  );
+  return res.rows.length > 0;
+}
+
 export async function getCampaignsForWallet(walletAddress: string): Promise<CampaignSummary[]> {
   const advertiser = await getAdvertiserByWallet(walletAddress);
   if (!advertiser) return [];

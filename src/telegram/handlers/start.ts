@@ -68,7 +68,7 @@ export function registerStartHandler(bot: Bot): void {
       ]);
       const isOwner = ownerGroups.length > 0;
       if (isOwner || isAdvertiser) {
-        await handleDmStart(ctx.api, fromId, isOwner, isAdvertiser);
+        await handleDmStart(ctx.api, fromId, ownerGroups, isAdvertiser);
         return;
       }
     }

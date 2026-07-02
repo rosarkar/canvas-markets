@@ -106,6 +106,13 @@ export async function updateOwnerWallet(ownerTgId: bigint, wallet: string): Prom
   return res.rowCount ?? 0;
 }
 
+export async function updateGroupWallet(tgGroupId: bigint, wallet: string): Promise<void> {
+  await db.query(`UPDATE groups SET owner_wallet = $2 WHERE tg_group_id = $1`, [
+    tgGroupId.toString(),
+    wallet.toLowerCase(),
+  ]);
+}
+
 export async function updatePortalInviteLink(
   groupId: number,
   inviteLink: string,

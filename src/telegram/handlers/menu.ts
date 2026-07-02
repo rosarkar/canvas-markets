@@ -3,9 +3,12 @@ import { Bot, InlineKeyboard } from "grammy";
 
 import {
   getGroupsByOwnerTgId,
+  getGroupByTgId,
   getGroupOwnerMenuStats,
   updateOwnerWallet,
+  updateGroupWallet,
 } from "@/adapters/groups.adapter.js";
+import type { GroupRow } from "@/adapters/groups.adapter.js";
 import { hasAdvertiserActivity } from "@/adapters/advertisers.adapter.js";
 import { config } from "@/config/index.js";
 import { createPortalInviteLink } from "@/telegram/services/portal-invite.js";
@@ -15,11 +18,13 @@ import { logger } from "@/utils/logger.js";
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 
+type SessionState = { mode: "owner" | "advertiser"; activeTgGroupId?: bigint };
+
 /** Owner Tg IDs waiting for a new wallet address reply via the menu. */
 const pendingMenuWallet = new Map<number, true>();
 
-/** Per-user mode chosen at the dual-identity selector. Cleared on "Switch mode". */
-const sessionMode = new Map<number, "owner" | "advertiser">();
+/** Per-user session state. mode: which identity is active; activeTgGroupId: selected group. */
+const sessionMode = new Map<number, SessionState>();
 
 // ─── keyboard builders ────────────────────────────────────────────────────────
 
@@ -29,7 +34,15 @@ function buildModeSelectorKeyboard(): InlineKeyboard {
     .text("📢 Run campaigns", "mode:advertiser");
 }
 
-export function buildOwnerMenuKeyboard(showSwitch = false): InlineKeyboard {
+function buildGroupPickerKeyboard(groups: GroupRow[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const g of groups) {
+    kb.text(g.groupTitle ?? `Group ${g.groupId}`, `select_group:${g.tgGroupId.toString()}`).row();
+  }
+  return kb;
+}
+
+export function buildOwnerMenuKeyboard(showSwitchMode = false): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("📊 My Stats", "menu:stats")
     .text("🔗 Portal Link", "menu:portal")
@@ -37,8 +50,10 @@ export function buildOwnerMenuKeyboard(showSwitch = false): InlineKeyboard {
     .text("✏️ Edit Rules", "menu:rules")
     .text("💰 Update Wallet", "menu:wallet")
     .row()
-    .text("❓ Help", "menu:help");
-  if (showSwitch) kb.row().text("🔄 Switch mode", "menu:switch");
+    .text("❓ Help", "menu:help")
+    .row()
+    .text("🔄 Switch group", "menu:switch_group");
+  if (showSwitchMode) kb.row().text("🔄 Switch mode", "menu:switch");
   return kb;
 }
 
@@ -83,7 +98,12 @@ export async function handlePendingMenuWalletReply(
     );
     return true;
   }
-  await updateOwnerWallet(BigInt(ctx.from.id), wallet.toLowerCase());
+  const session = sessionMode.get(ctx.from.id);
+  if (session?.activeTgGroupId) {
+    await updateGroupWallet(session.activeTgGroupId, wallet.toLowerCase());
+  } else {
+    await updateOwnerWallet(BigInt(ctx.from.id), wallet.toLowerCase());
+  }
   pendingMenuWallet.delete(ctx.from.id);
   await ctx.reply(`✅ Wallet updated to \`${wallet.toLowerCase()}\``, { parse_mode: "Markdown" });
   logger.info({ ownerTgId: ctx.from.id, wallet }, "Owner wallet updated via menu");
@@ -97,35 +117,67 @@ export async function handlePendingMenuWalletReply(
 export async function handleDmStart(
   api: Api,
   fromId: number,
-  isOwner: boolean,
+  ownerGroups: GroupRow[],
   isAdvertiser: boolean,
 ): Promise<void> {
+  const isOwner = ownerGroups.length > 0;
+  const send = async (text: string, extra?: object) =>
+    api.sendMessage(fromId, text, (extra ?? {}) as Parameters<typeof api.sendMessage>[2]);
+
   if (isOwner && isAdvertiser) {
-    const mode = sessionMode.get(fromId);
-    if (mode === "owner") {
-      await api.sendMessage(fromId, "What would you like to do?", {
-        reply_markup: buildOwnerMenuKeyboard(true),
-      });
-    } else if (mode === "advertiser") {
-      await api.sendMessage(fromId, advertiserScreenText(), {
-        parse_mode: "Markdown",
-        reply_markup: buildAdvertiserKeyboard(true),
-      });
+    const session = sessionMode.get(fromId);
+    if (session?.mode === "owner") {
+      await showOwnerScreenOrPicker(fromId, ownerGroups, true, send);
+    } else if (session?.mode === "advertiser") {
+      await send(advertiserScreenText(), { parse_mode: "Markdown", reply_markup: buildAdvertiserKeyboard(true) });
     } else {
-      await api.sendMessage(fromId, "👋 Welcome back. What would you like to do?", {
-        reply_markup: buildModeSelectorKeyboard(),
-      });
+      await send("👋 Welcome back. What would you like to do?", { reply_markup: buildModeSelectorKeyboard() });
     }
   } else if (isOwner) {
-    await api.sendMessage(fromId, "What would you like to do?", {
-      reply_markup: buildOwnerMenuKeyboard(false),
-    });
+    await showOwnerScreenOrPicker(fromId, ownerGroups, false, send);
   } else if (isAdvertiser) {
-    await api.sendMessage(fromId, advertiserScreenText(), {
-      parse_mode: "Markdown",
-      reply_markup: buildAdvertiserKeyboard(false),
-    });
+    await send(advertiserScreenText(), { parse_mode: "Markdown", reply_markup: buildAdvertiserKeyboard(false) });
   }
+}
+
+// ─── internal helpers ─────────────────────────────────────────────────────────
+
+type Sender = (text: string, extra?: object) => Promise<unknown>;
+
+/**
+ * Route to owner menu if a group is already selected, otherwise show the group picker
+ * (or auto-select if the owner has exactly one group).
+ */
+async function showOwnerScreenOrPicker(
+  fromId: number,
+  groups: GroupRow[],
+  showSwitchMode: boolean,
+  send: Sender,
+): Promise<void> {
+  if (groups.length === 0) {
+    await send("No registered groups found.");
+    return;
+  }
+  const session = sessionMode.get(fromId);
+  if (session?.activeTgGroupId) {
+    // Already have a group selected — go straight to the menu
+    await send("What would you like to do?", { reply_markup: buildOwnerMenuKeyboard(showSwitchMode) });
+    return;
+  }
+  if (groups.length === 1) {
+    sessionMode.set(fromId, { mode: "owner", activeTgGroupId: groups[0]!.tgGroupId });
+    await send("What would you like to do?", { reply_markup: buildOwnerMenuKeyboard(showSwitchMode) });
+    return;
+  }
+  sessionMode.set(fromId, { mode: "owner" });
+  await send("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+}
+
+/** Resolve the active group from session, or return null if not set. */
+async function resolveActiveGroup(fromId: number): Promise<GroupRow | null> {
+  const session = sessionMode.get(fromId);
+  if (!session?.activeTgGroupId) return null;
+  return getGroupByTgId(session.activeTgGroupId);
 }
 
 // ─── handler registration ─────────────────────────────────────────────────────
@@ -149,12 +201,16 @@ export function registerMenuHandler(bot: Bot): void {
       return;
     }
 
-    await handleDmStart(ctx.api, fromId, isOwner, isAdvertiser);
+    await handleDmStart(ctx.api, fromId, groups, isAdvertiser);
   });
 
   bot.on("callback_query:data", async (ctx, next) => {
     const data = ctx.callbackQuery.data;
-    if (!data.startsWith("menu:") && !data.startsWith("mode:")) {
+    if (
+      !data.startsWith("menu:") &&
+      !data.startsWith("mode:") &&
+      !data.startsWith("select_group:")
+    ) {
       await next();
       return;
     }
@@ -162,18 +218,46 @@ export function registerMenuHandler(bot: Bot): void {
     const fromId = ctx.from.id;
     await ctx.answerCallbackQuery();
 
+    // ── select_group:{tgGroupId} ───────────────────────────────────────────────
+    if (data.startsWith("select_group:")) {
+      const tgGroupIdStr = data.slice("select_group:".length);
+      let tgGroupId: bigint;
+      try {
+        tgGroupId = BigInt(tgGroupIdStr);
+      } catch {
+        await ctx.api.sendMessage(fromId, "Invalid group selection.");
+        return;
+      }
+      const group = await getGroupByTgId(tgGroupId);
+      if (!group || Number(group.ownerTgId) !== fromId) {
+        await ctx.api.sendMessage(fromId, "Group not found.");
+        return;
+      }
+      const isAdvertiser = await hasAdvertiserActivity(BigInt(fromId));
+      sessionMode.set(fromId, { mode: "owner", activeTgGroupId: tgGroupId });
+      await ctx.editMessageText("What would you like to do?", {
+        reply_markup: buildOwnerMenuKeyboard(isAdvertiser),
+      });
+      return;
+    }
+
     switch (data) {
       // ── mode selector ──────────────────────────────────────────────────────
       case "mode:owner": {
-        sessionMode.set(fromId, "owner");
-        await ctx.editMessageText("What would you like to do?", {
-          reply_markup: buildOwnerMenuKeyboard(true),
-        });
+        const [groups, isAdvertiser] = await Promise.all([
+          getGroupsByOwnerTgId(BigInt(fromId)),
+          hasAdvertiserActivity(BigInt(fromId)),
+        ]);
+        const session = sessionMode.get(fromId);
+        // Preserve activeTgGroupId if already set — user may be switching back to owner mode
+        sessionMode.set(fromId, { mode: "owner", activeTgGroupId: session?.activeTgGroupId });
+        const edit: Sender = (text, extra) => ctx.editMessageText(text, extra as Parameters<typeof ctx.editMessageText>[1]);
+        await showOwnerScreenOrPicker(fromId, groups, isAdvertiser, edit);
         break;
       }
 
       case "mode:advertiser": {
-        sessionMode.set(fromId, "advertiser");
+        sessionMode.set(fromId, { mode: "advertiser" });
         await ctx.editMessageText(advertiserScreenText(), {
           parse_mode: "Markdown",
           reply_markup: buildAdvertiserKeyboard(true),
@@ -189,70 +273,97 @@ export function registerMenuHandler(bot: Bot): void {
         break;
       }
 
-      // ── owner menu actions ─────────────────────────────────────────────────
-      case "menu:stats": {
-        const stats = await getGroupOwnerMenuStats(BigInt(fromId));
-        if (stats.length === 0) {
-          await ctx.api.sendMessage(fromId, "No registered groups found.");
+      case "menu:switch_group": {
+        const [groups, isAdvertiser] = await Promise.all([
+          getGroupsByOwnerTgId(BigInt(fromId)),
+          hasAdvertiserActivity(BigInt(fromId)),
+        ]);
+        const existing = sessionMode.get(fromId);
+        // Clear activeTgGroupId so showOwnerScreenOrPicker always triggers picker / auto-select
+        sessionMode.set(fromId, { mode: existing?.mode ?? "owner" });
+        if (groups.length === 0) {
+          await ctx.editMessageText("No registered groups found.");
           break;
         }
-        for (const s of stats) {
-          const title = s.groupTitle ?? "Your group";
-          const earned = fromMicroUnits(s.pendingEarningsMicro).toFixed(2);
-          const bidLine =
-            s.topBidMicro != null
-              ? `$${fromMicroUnits(s.topBidMicro).toFixed(4)} per verification`
-              : "No active campaign";
-          await ctx.api.sendMessage(
-            fromId,
-            [
-              title,
-              `Verifications this week: ${s.verificationsThisWeek}`,
-              `Total earned: $${earned}`,
-              `Current advertiser: —`,
-              `Current bid: ${bidLine}`,
-            ].join("\n"),
-          );
+        if (groups.length === 1) {
+          sessionMode.set(fromId, { mode: "owner", activeTgGroupId: groups[0]!.tgGroupId });
+          await ctx.editMessageText("What would you like to do?", {
+            reply_markup: buildOwnerMenuKeyboard(isAdvertiser),
+          });
+        } else {
+          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
         }
         break;
       }
 
-      case "menu:portal": {
-        const groups = await getGroupsByOwnerTgId(BigInt(fromId));
-        if (groups.length === 0) {
-          await ctx.api.sendMessage(fromId, "No registered groups found.");
+      // ── owner menu actions ─────────────────────────────────────────────────
+      case "menu:stats": {
+        const group = await resolveActiveGroup(fromId);
+        if (!group) {
+          const groups = await getGroupsByOwnerTgId(BigInt(fromId));
+          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
           break;
         }
-        for (const group of groups) {
-          try {
-            const portalLink =
-              group.portalInviteLink ?? (await createPortalInviteLink(bot.api, group));
-            if (portalLink) {
-              await ctx.api.sendMessage(
-                fromId,
-                `Here's your portal link to share with new members:\n${portalLink}`,
-              );
-            } else {
-              await ctx.api.sendMessage(
-                fromId,
-                "Could not generate portal link. Make sure the bot has **Invite users via link** admin permission.",
-                { parse_mode: "Markdown" },
-              );
-            }
-          } catch {
-            /* ignore */
+        const allStats = await getGroupOwnerMenuStats(BigInt(fromId));
+        const s = allStats.find((stat) => stat.groupId === group.groupId);
+        if (!s) {
+          await ctx.api.sendMessage(fromId, "No stats found for this group.");
+          break;
+        }
+        const title = s.groupTitle ?? "Your group";
+        const earned = fromMicroUnits(s.pendingEarningsMicro).toFixed(2);
+        const bidLine =
+          s.topBidMicro != null
+            ? `$${fromMicroUnits(s.topBidMicro).toFixed(4)} per verification`
+            : "No active campaign";
+        await ctx.api.sendMessage(
+          fromId,
+          [
+            title,
+            `Verifications this week: ${s.verificationsThisWeek}`,
+            `Total earned: $${earned}`,
+            `Current advertiser: —`,
+            `Current bid: ${bidLine}`,
+          ].join("\n"),
+        );
+        break;
+      }
+
+      case "menu:portal": {
+        const group = await resolveActiveGroup(fromId);
+        if (!group) {
+          const groups = await getGroupsByOwnerTgId(BigInt(fromId));
+          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+          break;
+        }
+        try {
+          const portalLink =
+            group.portalInviteLink ?? (await createPortalInviteLink(bot.api, group));
+          if (portalLink) {
+            await ctx.api.sendMessage(
+              fromId,
+              `Here's your portal link to share with new members:\n${portalLink}`,
+            );
+          } else {
+            await ctx.api.sendMessage(
+              fromId,
+              "Could not generate portal link. Make sure the bot has **Invite users via link** admin permission.",
+              { parse_mode: "Markdown" },
+            );
           }
+        } catch {
+          /* ignore */
         }
         break;
       }
 
       case "menu:rules": {
-        const groups = await getGroupsByOwnerTgId(BigInt(fromId));
-        if (groups.length === 0) {
-          await ctx.api.sendMessage(fromId, "No registered groups found.");
+        const group = await resolveActiveGroup(fromId);
+        if (!group) {
+          const groups = await getGroupsByOwnerTgId(BigInt(fromId));
+          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
           break;
         }
-        const group = groups[0]!;
         startPendingRulesPrompt(fromId, group.groupId);
         const keyboard = new InlineKeyboard().text("Skip", `rules_prompt:skip:${group.groupId}`);
         await ctx.api.sendMessage(

@@ -145,44 +145,90 @@
 ### Mateo — Fix immediately (blocks live testing)
 
 **`registered_at` not written on group insert**
-- `src/adapters/schema.ts` — `CREATE TABLE IF NOT EXISTS` block is skipped for existing tables so the `registered_at` column definition was never applied to the live DB
-- All rows have null `registered_at`; group picker ordering currently works by coincidence (`group_id ASC`) but is not reliable
-- Fix: `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;`
+- **File:** `src/adapters/schema.ts`
+- **Root cause:** The `registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP` column is defined inside the `CREATE TABLE IF NOT EXISTS groups` block, but Postgres skips that entire block because the table already exists. The column was never added to the live database. Every row in the `groups` table has null `registered_at`.
+- **Current behaviour:** Group picker ordering works by coincidence — the query falls back to `group_id ASC` which happens to be chronological. Not reliable long-term.
+- **Fix:** Run this migration against the live Railway Postgres, then add it to the schema init so it runs on future deploys:
+  ```sql
+  ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  ```
+- **Also:** In `src/adapters/groups.adapter.ts`, the `registerGroup` INSERT omits `registered_at` from the column list. After the migration, new rows will pick up the DB-level default, but confirm this is intentional rather than adding an explicit value.
+
+---
 
 **Stuck `PASSED` state**
-- If `sendAdmissionRulesDm` throws a Telegram API error after Kimi passes, the verification row stays in `PASSED` permanently
-- User is muted forever; a duplicate verification can start for the same user
-- Fix: add a sweep in the 60s TTL loop — find any verification in `PASSED` for more than 2 minutes, re-attempt `sendAdmissionRulesDm`, or transition to `RULES_TIMED_OUT` on second failure
+- **Files:** `src/telegram/services/process-text-response.ts` (the `completeVerificationPass` function), `src/index.ts` (the 60s TTL loop)
+- **Root cause:** The verification flow transitions `PASSED → RULES_PENDING` by calling `sendAdmissionRulesDm`. If that Telegram API call throws mid-flight (network error, Telegram outage, rate limit), the row stays in `PASSED` permanently. `getActiveVerificationForUser` in `src/adapters/verification.adapter.ts` excludes `PASSED` from its active set, so the user is muted forever and a duplicate verification can start.
+- **Fix:** In `src/index.ts`, add a recovery sweep inside the existing 60s `setInterval` alongside the `RULES_PENDING` sweep:
+  1. Find any verification in `PASSED` state where `updated_at < NOW() - INTERVAL '2 minutes'`
+  2. Re-attempt `sendAdmissionRulesDm` for each
+  3. If it fails again, transition to `RULES_TIMED_OUT` and leave user muted — do not call unmute
+
+---
 
 ### Mateo — Fix before approaching advertisers
 
 **Basescan contract verification**
-- `forge verify-contract` on `CanvasEscrowV0.sol` at `0x262ac1a082fd32c83e9b32ff1912ea070ed55890`
-- Blocking Bankr integration
+- **Command:** `forge verify-contract 0x262ac1a082fd32c83e9b32ff1912ea070ed55890 CanvasEscrowV0 --chain base --etherscan-api-key $BASESCAN_API_KEY`
+- **Why it matters:** Bankr integration requires a verified contract. Unverified contracts show as bytecode on Basescan — advertisers and partners can't inspect what they're depositing into.
+- **Note:** Contract is currently marked test-only in NatSpec. Confirm NatSpec comments are updated before verifying publicly.
+
+---
 
 **Coinbase smart wallet fails in Telegram in-app browser**
-- Payment page throws "This app doesn't support smart wallets / window.opener is inaccessible" when opened from Telegram's in-app browser
-- Workaround: open link in external browser — payment confirms correctly, no funds at risk (Campaign #9 confirmed)
-- Fix option 1: add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers
-- Fix option 2: force payment link to open in external browser via Telegram link formatting
+- **Where it fails:** The payment page at `canvas-ai-production.up.railway.app` served when an advertiser taps the funding link in Telegram
+- **Error:** "This app doesn't support smart wallets / window.opener is inaccessible" from `keys.coinbase.com`
+- **Root cause:** Telegram's in-app browser sets `Cross-Origin-Opener-Policy: same-origin` which blocks `window.opener`. The Coinbase smart wallet SDK requires `window.opener` to complete its OAuth-style connection flow.
+- **Workaround confirmed:** Opening the link in an external browser works — Campaign #9 escrow write succeeded, no funds at risk.
+- **Fix option 1 (recommended):** Add this response header to the payment page server response:
+  ```
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  ```
+- **Fix option 2:** Append `?startapp` to the Telegram link or restructure as a `t.me` deep link so Telegram opens it in an external browser automatically.
+
+---
 
 **Advertiser accept/decline layer for group owners**
+- **What it is:** Before a campaign goes live in a group, the group owner should be able to approve or reject the advertiser. Currently any funded campaign immediately becomes active.
+- **Proposed flow:** When an advertiser funds a campaign targeting a group, bot DMs the group owner: "New campaign request from [advertiser name] — $X/verification, [task preview]. Accept or Decline?" Inline buttons. If declined, escrow refunded to advertiser. If no response within 48 hours, auto-accept.
+- **DB change needed:** Add `status` column to `advertiser_budgets` table: `pending | active | declined`. Payout batch and verification flow must check `status = 'active'` before serving tasks.
+- **Bid ladder note:** When top bidder's budget runs out, the next bidder in the ladder should auto-promote to active rather than requiring a new accept — group owner already approved that advertiser category implicitly.
 
-**Rate limiting** — one verification attempt per Telegram handle per 12 hours across all groups
+---
 
-**`/api/groups` endpoint** — needed for advertiser dashboard Available Groups tab
+**Rate limiting — one verification attempt per Telegram handle per 12 hours across all groups**
+- **Current state:** Every table scopes by `(tg_user_id, group_id)` pairs. There is no global user tracking table. A user can attempt verification in unlimited groups simultaneously.
+- **Why it matters:** Without rate limiting, a coordinated bot farm can cycle the same handles across many groups quickly.
+- **Proposed fix:** Add a `user_cooldowns` table (may already exist in schema — check) with columns `tg_user_id`, `last_attempt_at`, `attempt_count`. On each join intercept in `join.ts`, query this table. If `last_attempt_at > NOW() - INTERVAL '12 hours'`, reject with a message and do not start a verification.
+- **Note:** Rate limiting was deliberately deferred to preserve maximum visible verification counts during early investor conversations. Implement before public rollout.
+
+---
+
+**`/api/groups` endpoint**
+- **What it is:** A read endpoint that returns the list of registered groups with member count, topic, and current top bid — needed by the advertiser dashboard's Available Groups tab.
+- **Current state:** Endpoint does not exist. The advertiser dashboard UI gracefully shows an empty state when it 404s.
+- **Shape needed:**
+  ```json
+  [{ "tg_group_id": -5501340634, "group_title": "Canvas / Bankr", "topic": "...", "member_count": 0, "top_bid": 0.35 }]
+  ```
+- **Auth:** Same bare wallet pattern as other read endpoints for now — add signature verification before public rollout.
+
+---
 
 ### Known — Deferred (not blocking)
 
 **Dual-identity session clears on bot restart**
-- `activeTgGroupId` and mode stored in-memory only; bot restart (Railway redeploy) clears all sessions
-- Users hit `/start` again to restore
-- Fix: persist session to Postgres or Redis — deferred until needed
+- **Files:** `src/telegram/handlers/menu.ts` and `src/telegram/handlers/start.ts` — session stored in a `Map<number, { mode, activeTgGroupId? }>` in-memory
+- **Symptom:** Railway auto-deploys on every push to main, which restarts the bot process and clears all sessions. Users who were mid-flow hit `/start` again to restore context.
+- **Fix:** Persist session to a `user_sessions` table in Postgres or a Redis key with TTL. Deferred until session loss becomes a user complaint.
+
+---
 
 **Read endpoints trust bare wallet strings**
-- `/api/advertiser` and `/api/group-owner` accept bare wallet addresses with no signature proof
-- Information-disclosure risk, not funds-at-risk
-- Fix: add wallet signature verification before public rollout
+- **Files:** `src/api/advertiser.ts`, `src/api/group-owner.ts`
+- **Symptom:** Both endpoints accept a bare wallet address as the identity claim with no cryptographic proof. Anyone who knows a wallet address can read that wallet's campaign or group data.
+- **Risk level:** Information disclosure only — no funds at risk. Read-only endpoints.
+- **Fix:** Standard wallet signature flow — server issues a nonce, client signs it with their wallet, server verifies signature matches the claimed address. Implement before public rollout when real advertiser data is in the system.
 
 ---
 

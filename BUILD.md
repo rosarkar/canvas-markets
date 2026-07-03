@@ -42,6 +42,10 @@
 - Added in: `process-text-response.ts` (all 4 re-prompt constants), `captcha-callback.ts` (wrong answer message), `campaigns.ts` (campaigns list), `buy.ts` (all buy flow steps), `register.ts` (all registration steps), `menu.ts` (group picker and wallet prompt)
 - Intentionally excluded from: success confirmations, the owner menu itself, the mode selector, admission rules DM (has "I agree ✓" exit), timeout notifications, all group chat messages
 
+**Database cleanup**
+- Old test groups deactivated: `UPDATE groups SET is_active = false WHERE group_id IN (5, 8, 12);`
+- Canvas / Bankr (group_id 14) is now the only active group in the picker
+
 ---
 
 ### June 30, 2026
@@ -168,11 +172,6 @@
 **Symptom:** If `sendAdmissionRulesDm` throws a Telegram API error after Kimi passes, the verification row stays in `PASSED` permanently. User is muted forever. A duplicate verification can start for the same user.  
 **Fix:** Add a sweep in the 60s TTL loop: find any verification in `PASSED` state for more than 2 minutes, re-attempt `sendAdmissionRulesDm`, or transition to `RULES_TIMED_OUT` on second failure.
 
-### `group_title` null on old group rows
-**Status:** Low priority  
-**Symptom:** Groups registered before `group_title` column was added show as "Group {group_id}" in the picker.  
-**Fix:** `UPDATE groups SET is_active = false WHERE group_id IN (5, 8, 12);` to hide old test groups from picker.
-
 ### Dual-identity session clears on bot restart
 **Status:** Known, deferred  
 **Symptom:** `activeTgGroupId` and mode stored in-memory only. Bot restart clears all sessions. Users hit `/start` again to restore.  
@@ -222,3 +221,102 @@
 - Payout batch query must check `payout_frozen = false` before releasing USDC
 
 **Smart contract note:** Freeze enforced at agent server level (skip Step 2 call) — not at contract level. Adding a freeze function to `CanvasEscrowV0.sol` increases audit surface area before the contract is audited.
+
+---
+
+## Founding Context (Archive)
+
+### What Canvas Protocol Is
+
+Canvas Protocol is a decentralized verification marketplace that replaces standard Telegram group join checks with meaningful sponsored captcha tasks.
+
+**The one-sentence pitch:** Instead of solving a useless bot-check to join a Telegram group, you complete a short task sponsored by an advertiser or AI lab — the group owner gets paid in USDC, the advertiser gets a verified human completion with audience context, and the human gets access.
+
+**Origin:** Rohit has been building this concept for several years. He presented an MVP at an EigenLayer + ETH Foundation hacker house in Buenos Aires during DevConnect 2024, where it was selected as one of five featured projects. The original design used EigenLayer for trust. The current iteration runs on Base.
+
+---
+
+### Team
+
+**Rohit Sarkar** (@_rosark, Toronto) — product, GTM, copywriting, investor relations. Background in protocol research and content across InfStones, Figment, Caldera, and 0x (Content Manager Jan–Jun 2026, laid off June 5). Statistics education. Can code SQL/Python/R, comfortable in terminal. Now fully focused on Canvas.
+
+**Mateo** (@0xteo, based in Asia) — smart contract development, backend infrastructure, complex state machine work. Builder of Basemate (Base Batches 002 alumnus). Introduced by Igor from the Bankr team. 50/50 equity split.
+
+Canvas was started as a clean separate project from Basemate — new repo, new entity — so both founders have clean ownership with no cap table entanglement.
+
+---
+
+### Business Model
+
+**Protocol fee:** Canvas takes 50% at launch, with a stated trajectory toward a smaller cut as volume scales. (Note: the original spec said 10–15%; the launch number is 50% as an interim marketplace rate while supply and demand are thin. This compresses over time — position as marketplace-comp trajectory when pitching.)
+
+**Moat:** The group registry and quality verification layer. Canvas becomes the trust infrastructure that tells advertisers which groups are legitimate and which completions are genuine.
+
+**Revenue math (Phase 3):** A group with 5,000 members re-verified monthly at $0.10 generates $500/month passively. Canvas keeps its protocol share. Scaled across thousands of groups this is significant recurring protocol revenue.
+
+---
+
+### Captcha Task Design
+
+**Type 1 — RLHF training data (AI lab advertiser)**
+Human ranks AI responses from most to least helpful, matched to group topic. A crypto-native human's ranking of DeFi responses is premium training data. Verified contextual humans vs. random Mechanical Turk annotators.
+
+Example (crypto trading group, DeFi AI Lab):
+> Rank these 3 responses from most to least helpful. Reply B, A, C.
+> A — "To swap tokens, connect your wallet, select the pair, and confirm."
+> B — "You need ETH for gas. Approve the token first, then swap. Check slippage."
+> C — "Blockchain technology enables decentralised finance through trustless smart contracts."
+
+**Type 2 — Agent acquisition (DeFi protocol advertiser)**
+No wrong answer. Human engages with advertiser's product framing, gets offered an agent connection post-verification. Advertiser pays per verified DeFi-native lead, not per impression.
+
+Example (Base DeFi Traders group, Aave):
+> You have 10,000 USDC. What would you do?
+> A — Supply to Aave at 4.2% APY and borrow against it
+> B — Hold in cold wallet
+> C — Bridge to another chain for higher yield
+> Sponsored by Aave · no wrong answer
+
+---
+
+### Competitive Positioning
+
+**vs. Google reCAPTCHA:** Google keeps all the value. Canvas pays publishers directly.
+
+**vs. Scale AI / Mechanical Turk:** Active opt-in labor markets. Canvas is ambient — humans are already joining a group, the captcha redirects that micro-attention toward valuable tasks.
+
+**vs. World ID:** Proves you're human but generates no useful signal. Canvas combines proof of humanity with productive micro-tasks.
+
+---
+
+### Target Advertisers
+
+**Tier 1 (warm, approach first):** Moonwell, Avantis, Bankr ecosystem agents  
+**Tier 2:** Aave, Morpho, Across, Gauntlet  
+**Tier 3 (longer sales cycles):** Nous Research, Sentient, Gensyn
+
+**Target group supply side:** Lennox Cartel, Mfers, OCR. First group owner: Ant (gave permission for early testing).
+
+---
+
+### Funding Targets
+
+Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live revenue milestones. Pitch frames Canvas as the foundational missing market — verified human attention priced onchain.
+
+---
+
+### Key Environment Variables
+- `KIMI_BASE_URL=https://api.moonshot.ai/v1`
+- `KIMI_API_KEY` — in Railway
+- `COMPANY_WALLET=0x199390C2C6Af11b8938c6fCd86208b370D43C61F`
+
+### Key IDs
+- Railway project: `bef22e72-bab1-4682-8495-c534cddedf45`
+- Canvas Test group: `tg_group_id -5145298837`
+- Canvas / Bankr group: `tg_group_id -5501340634` (group_id 14, active)
+- Bot: `@CanvasProtocolBot`
+- Domain: `canvas-protocol.com` (Cloudflare + Vercel)
+
+---
+
+*Canvas Protocol · BUILD.md · confidential*

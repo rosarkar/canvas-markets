@@ -60,8 +60,12 @@ async function finalize(
   });
   await transitionState(verification.verificationId, VerificationState.SCORING);
 
-  const result = await scoreWithKimi(scoringPrompt, responseText);
-  const passed = passesThreshold(result);
+  // No active advertiser — admit on any non-empty response without calling Kimi.
+  const noAdvertiser = verification.advertiserId == null;
+  const result = noAdvertiser
+    ? { score: 100, method: "manual" as const }
+    : await scoreWithKimi(scoringPrompt, responseText);
+  const passed = noAdvertiser || passesThreshold(result);
 
   const group = await getGroupById(verification.groupId);
   if (!group) throw new Error("Group not found");

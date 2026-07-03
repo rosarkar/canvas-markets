@@ -126,8 +126,6 @@ export async function sendVerificationTaskDm(
 
   try {
     switch (task.taskType) {
-      // TODO: for groups with no active advertiser campaign, Kimi scoring is currently still applied.
-      // In future: bypass Kimi for no-advertiser groups and admit directly on any non-empty response.
       case TaskType.OPEN_TEXT: {
         const payload = task.payload as { prompt: string };
         await api.sendMessage(

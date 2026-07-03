@@ -138,60 +138,51 @@
 - Confirm rules gate appears and "I agree ✓" admits user
 - Confirm group picker routes correctly for multi-group owner
 
-### Pending — Mateo
-- **`registered_at` schema migration** — `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;` needs to run against live DB; `CREATE TABLE IF NOT EXISTS` block is skipped because table already exists, so column was never added
-- **Stuck `PASSED` state recovery** — if `sendAdmissionRulesDm` throws mid-flight, verification stays stuck in `PASSED` forever; needs a sweep in the 60s TTL loop to re-attempt or transition to `RULES_TIMED_OUT` after 2 minutes
-- **Basescan contract verification** via `forge verify-contract` (blocking Bankr integration)
-- **Advertiser accept/decline layer** for group owners
-- **Rate limiting** — one verification attempt per handle per 12 hours across all groups
-- **`/api/groups` endpoint** (needed for advertiser dashboard Available Groups tab)
-- **Coinbase smart wallet COOP fix** — add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers, or force link to open in external browser
-
 ---
 
-## Known Issues
+## Issues & Pending Work
 
-### Coinbase smart wallet fails in Telegram in-app browser
-**Status:** Open — workaround available  
-**Symptom:** Payment page throws "This app doesn't support smart wallets / window.opener is inaccessible" when opened from Telegram's in-app browser.  
-**Workaround:** Open the payment link in an external browser. Payment confirms correctly.  
-**Root cause:** Telegram's in-app browser blocks `window.opener`. Coinbase smart wallet SDK requires it for the OAuth connection flow.  
-**Fix options:**
-1. Add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers
-2. Force payment link to open in external browser via Telegram link formatting  
-**Confirmed:** Campaign #9 escrow write succeeded despite the error — no funds at risk.
+### Mateo — Fix immediately (blocks live testing)
 
-### `registered_at` not written on group insert
-**Status:** Open — Mateo to fix  
-**Symptom:** All rows in `groups` table have null `registered_at`. Group picker ordering currently works (falls back to `group_id ASC`) but is not reliable long-term.  
-**Root cause:** `CREATE TABLE IF NOT EXISTS` block is skipped for existing tables so the column definition was never applied to the live DB. No `ALTER TABLE` migration exists.  
-**Fix:** `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;`
+**`registered_at` not written on group insert**
+- `src/adapters/schema.ts` — `CREATE TABLE IF NOT EXISTS` block is skipped for existing tables so the `registered_at` column definition was never applied to the live DB
+- All rows have null `registered_at`; group picker ordering currently works by coincidence (`group_id ASC`) but is not reliable
+- Fix: `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;`
 
-### Stuck `PASSED` state
-**Status:** Open — Mateo to fix  
-**Symptom:** If `sendAdmissionRulesDm` throws a Telegram API error after Kimi passes, the verification row stays in `PASSED` permanently. User is muted forever. A duplicate verification can start for the same user.  
-**Fix:** Add a sweep in the 60s TTL loop: find any verification in `PASSED` state for more than 2 minutes, re-attempt `sendAdmissionRulesDm`, or transition to `RULES_TIMED_OUT` on second failure.
+**Stuck `PASSED` state**
+- If `sendAdmissionRulesDm` throws a Telegram API error after Kimi passes, the verification row stays in `PASSED` permanently
+- User is muted forever; a duplicate verification can start for the same user
+- Fix: add a sweep in the 60s TTL loop — find any verification in `PASSED` for more than 2 minutes, re-attempt `sendAdmissionRulesDm`, or transition to `RULES_TIMED_OUT` on second failure
 
-### Dual-identity session clears on bot restart
-**Status:** Known, deferred  
-**Symptom:** `activeTgGroupId` and mode stored in-memory only. Bot restart clears all sessions. Users hit `/start` again to restore.  
-**Fix:** Persist session to Postgres or Redis. Deferred until needed.
+### Mateo — Fix before approaching advertisers
 
-### Read endpoints trust bare wallet strings
-**Status:** Security — close before public rollout  
-**Symptom:** `/api/advertiser` and `/api/group-owner` endpoints accept bare wallet addresses with no signature proof. Information-disclosure risk (not funds-at-risk).  
-**Fix:** Add wallet signature verification (sign a nonce, verify on server) before public rollout.
+**Basescan contract verification**
+- `forge verify-contract` on `CanvasEscrowV0.sol` at `0x262ac1a082fd32c83e9b32ff1912ea070ed55890`
+- Blocking Bankr integration
 
----
+**Coinbase smart wallet fails in Telegram in-app browser**
+- Payment page throws "This app doesn't support smart wallets / window.opener is inaccessible" when opened from Telegram's in-app browser
+- Workaround: open link in external browser — payment confirms correctly, no funds at risk (Campaign #9 confirmed)
+- Fix option 1: add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers
+- Fix option 2: force payment link to open in external browser via Telegram link formatting
 
-## Deferred
+**Advertiser accept/decline layer for group owners**
 
-- Smart contract audit (unaudited, marked test-only in NatSpec — budget before public rollout)
-- Re-verification cadence (Phase 2)
-- Mod/admin payout splits (Phase 2)
-- Token issuance decision (deferred until term sheet or funding clarity)
-- Incorporation (deferred until term sheet or token decision)
-- Mateo relocation to North America (deferred until Canvas has funding — Alliance DAO acceptance would require NYC)
+**Rate limiting** — one verification attempt per Telegram handle per 12 hours across all groups
+
+**`/api/groups` endpoint** — needed for advertiser dashboard Available Groups tab
+
+### Known — Deferred (not blocking)
+
+**Dual-identity session clears on bot restart**
+- `activeTgGroupId` and mode stored in-memory only; bot restart (Railway redeploy) clears all sessions
+- Users hit `/start` again to restore
+- Fix: persist session to Postgres or Redis — deferred until needed
+
+**Read endpoints trust bare wallet strings**
+- `/api/advertiser` and `/api/group-owner` accept bare wallet addresses with no signature proof
+- Information-disclosure risk, not funds-at-risk
+- Fix: add wallet signature verification before public rollout
 
 ---
 
@@ -221,6 +212,17 @@
 - Payout batch query must check `payout_frozen = false` before releasing USDC
 
 **Smart contract note:** Freeze enforced at agent server level (skip Step 2 call) — not at contract level. Adding a freeze function to `CanvasEscrowV0.sol` increases audit surface area before the contract is audited.
+
+---
+
+## Deferred
+
+- Smart contract audit (unaudited, marked test-only in NatSpec — budget before public rollout)
+- Re-verification cadence (Phase 2)
+- Mod/admin payout splits (Phase 2)
+- Token issuance decision (deferred until term sheet or funding clarity)
+- Incorporation (deferred until term sheet or token decision)
+- Mateo relocation to North America (deferred until Canvas has funding — Alliance DAO acceptance would require NYC)
 
 ---
 
@@ -283,7 +285,9 @@ Example (Base DeFi Traders group, Aave):
 
 **vs. Google reCAPTCHA:** Google keeps all the value. Canvas pays publishers directly.
 
-**vs. Scale AI / Mechanical Turk:** Active opt-in labor markets. Canvas is ambient — humans are already joining a group, the captcha redirects that micro-attention toward valuable tasks.
+**vs. Basemate / Mateo's original PPH model:** Basemate has agents paying to reach humans, Basemate taking the fee, and humans receiving only an invite. The human is the product but doesn't get compensated. Canvas is transparent — humans opt in by completing a task, group owners earn directly, advertisers get verified completions not scraped signals.
+
+**vs. Scale AI / Mechanical Turk:** Active opt-in labor markets. Canvas is ambient — humans are already joining a group, the captcha redirects that micro-attention toward valuable tasks. Lower friction, higher scale, better demographic coverage, cryptographically provable provenance.
 
 **vs. World ID:** Proves you're human but generates no useful signal. Canvas combines proof of humanity with productive micro-tasks.
 
@@ -302,6 +306,18 @@ Example (Base DeFi Traders group, Aave):
 ### Funding Targets
 
 Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live revenue milestones. Pitch frames Canvas as the foundational missing market — verified human attention priced onchain.
+
+---
+
+### Open Questions (Founding Session — most resolved)
+
+- Equity split → resolved: 50/50
+- Smart contract auditor before Phase 2 → deferred, budget before public rollout
+- Minimum group size to prevent sybil groups → open
+- Escrow lock period and refund trigger → open
+- Task types in Phase 1 → resolved: open text, ranking, binary choice all live
+- First AI labs to approach → resolved: Tier 1 = Moonwell, Avantis, Bankr agents
+- Canvas token vs. USDC only → deferred until term sheet or funding clarity
 
 ---
 

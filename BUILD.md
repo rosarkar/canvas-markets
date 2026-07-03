@@ -8,7 +8,18 @@
 
 ## Changelog
 
-### July 2, 2026
+### July 2, 2026 (evening)
+
+**Fix: Kimi fallback URL corrected** (commit `23584ed` part 1)
+- `src/config/config.ts` — hardcoded fallback for `KIMI_BASE_URL` changed from `"https://api.moonshot.cn/v1"` to `"https://api.moonshot.ai/v1"`
+- Production was already correct via Railway env var but any new environment (local dev, staging, env reset) would have silently routed all Kimi calls to the wrong domain
+
+**Fix: No-advertiser groups bypass Kimi** (commit `23584ed`)
+- `src/telegram/services/process-text-response.ts` — `finalize()` now checks `verification.advertiserId == null` before calling Kimi
+- If null, synthesizes `{ score: 100, method: "manual" }` and sets `passed = true` directly — no Kimi HTTP call made
+- `src/telegram/services/captcha-dm.ts` — TODO comment removed (issue resolved)
+
+### July 2, 2026 (afternoon)
 
 **Group picker for multi-group owners**
 - `/start` owner path now detects how many groups an owner has registered
@@ -105,7 +116,7 @@
 ### Working
 - Join interception and mute
 - Captcha task delivery via DM
-- Kimi scoring of responses
+- Kimi scoring of responses (with no-advertiser bypass)
 - Re-prompt on thin/short answers
 - Post-verification rules gate with "I agree ✓"
 - USDC payout on verification pass
@@ -119,14 +130,18 @@
 ### Needs End-to-End Testing
 - Full verification loop with a real non-admin account in Canvas / Bankr group
 - Confirm USDC payout fires correctly on pass
+- Confirm Kimi scoring works on a live response (first real test of Kimi connectivity)
 - Confirm rules gate appears and "I agree ✓" admits user
 - Confirm group picker routes correctly for multi-group owner
 
 ### Pending — Mateo
-- Basescan contract verification via `forge verify-contract` (blocking Bankr integration)
-- Advertiser accept/decline layer for group owners
-- Rate limiting: one verification attempt per handle per 12 hours across all groups
-- `/api/groups` endpoint (needed for advertiser dashboard Available Groups tab)
+- **`registered_at` schema migration** — `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;` needs to run against live DB; `CREATE TABLE IF NOT EXISTS` block is skipped because table already exists, so column was never added
+- **Stuck `PASSED` state recovery** — if `sendAdmissionRulesDm` throws mid-flight, verification stays stuck in `PASSED` forever; needs a sweep in the 60s TTL loop to re-attempt or transition to `RULES_TIMED_OUT` after 2 minutes
+- **Basescan contract verification** via `forge verify-contract` (blocking Bankr integration)
+- **Advertiser accept/decline layer** for group owners
+- **Rate limiting** — one verification attempt per handle per 12 hours across all groups
+- **`/api/groups` endpoint** (needed for advertiser dashboard Available Groups tab)
+- **Coinbase smart wallet COOP fix** — add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers, or force link to open in external browser
 
 ---
 
@@ -134,32 +149,34 @@
 
 ### Coinbase smart wallet fails in Telegram in-app browser
 **Status:** Open — workaround available  
-**Symptom:** Payment page at `canvas-ai-production.up.railway.app` throws "This app doesn't support smart wallets / window.opener is inaccessible" when opened from Telegram's in-app browser. Error originates from `keys.coinbase.com` COOP policy check.  
+**Symptom:** Payment page throws "This app doesn't support smart wallets / window.opener is inaccessible" when opened from Telegram's in-app browser.  
 **Workaround:** Open the payment link in an external browser. Payment confirms correctly.  
 **Root cause:** Telegram's in-app browser blocks `window.opener`. Coinbase smart wallet SDK requires it for the OAuth connection flow.  
-**Fix options:**  
-1. Add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers  
+**Fix options:**
+1. Add `Cross-Origin-Opener-Policy: same-origin-allow-popups` to payment page response headers
 2. Force payment link to open in external browser via Telegram link formatting  
 **Confirmed:** Campaign #9 escrow write succeeded despite the error — no funds at risk.
 
 ### `registered_at` not written on group insert
-**Status:** Open  
-**Symptom:** All rows in `groups` table have null `registered_at`. Group picker ordering is coincidentally correct (falls back to `group_id DESC`) but is not reliable long-term.  
-**Fix:** Add `DEFAULT NOW()` to `registered_at` column in schema, or add explicit `registered_at: new Date()` to the group insert query.
+**Status:** Open — Mateo to fix  
+**Symptom:** All rows in `groups` table have null `registered_at`. Group picker ordering currently works (falls back to `group_id ASC`) but is not reliable long-term.  
+**Root cause:** `CREATE TABLE IF NOT EXISTS` block is skipped for existing tables so the column definition was never applied to the live DB. No `ALTER TABLE` migration exists.  
+**Fix:** `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;`
+
+### Stuck `PASSED` state
+**Status:** Open — Mateo to fix  
+**Symptom:** If `sendAdmissionRulesDm` throws a Telegram API error after Kimi passes, the verification row stays in `PASSED` permanently. User is muted forever. A duplicate verification can start for the same user.  
+**Fix:** Add a sweep in the 60s TTL loop: find any verification in `PASSED` state for more than 2 minutes, re-attempt `sendAdmissionRulesDm`, or transition to `RULES_TIMED_OUT` on second failure.
 
 ### `group_title` null on old group rows
 **Status:** Low priority  
 **Symptom:** Groups registered before `group_title` column was added show as "Group {group_id}" in the picker.  
-**Fix:** `UPDATE groups SET group_title = 'Canvas Test 2' WHERE group_id = 5;` (or deactivate old test groups with `UPDATE groups SET is_active = false WHERE group_id IN (5, 8, 12);`)
+**Fix:** `UPDATE groups SET is_active = false WHERE group_id IN (5, 8, 12);` to hide old test groups from picker.
 
 ### Dual-identity session clears on bot restart
 **Status:** Known, deferred  
-**Symptom:** `activeTgGroupId` and mode stored in-memory only. Bot restart (Railway redeploy) clears all sessions. Users hit `/start` again to restore.  
+**Symptom:** `activeTgGroupId` and mode stored in-memory only. Bot restart clears all sessions. Users hit `/start` again to restore.  
 **Fix:** Persist session to Postgres or Redis. Deferred until needed.
-
-### No-advertiser groups still call Kimi
-**Status:** Known, deferred  
-**Symptom:** Groups with no active advertiser budget still run Kimi scoring. There is a TODO in the code to bypass Kimi and admit on any non-empty response for no-advertiser groups.
 
 ### Read endpoints trust bare wallet strings
 **Status:** Security — close before public rollout  
@@ -176,3 +193,32 @@
 - Token issuance decision (deferred until term sheet or funding clarity)
 - Incorporation (deferred until term sheet or token decision)
 - Mateo relocation to North America (deferred until Canvas has funding — Alliance DAO acceptance would require NYC)
+
+---
+
+## Planned Features
+
+### Group owner abuse detection (Phase 2)
+**Goal:** Detect group owners farming payouts with bot accounts and freeze payouts pending manual review.
+
+**Red flags to score per group:**
+- High verification volume in a short window relative to group member count
+- Unusually high pass rate (near-100% is suspicious — legitimate groups expect some failures)
+- Response similarity across verifications in the same group (bots submit near-identical answers)
+- New accounts passing at high rates (no prior Telegram history detectable via join date)
+- Verification attempts clustered in tight time intervals (e.g. 10 joins in 2 minutes)
+
+**Proposed flow:**
+1. After each verification batch, Kimi scores the group's aggregate response patterns against the red flag criteria above
+2. If any threshold is exceeded, group owner payouts are frozen — funds remain in escrow, not released
+3. Bot sends owner a DM: "Your payouts have been paused for review. Our team will be in touch within 48 hours."
+4. Canvas team is notified (Telegram DM or email alert) to review manually
+5. Team either clears the group (payouts resume) or confirms fraud (escrow refunded to advertiser, group deregistered)
+
+**Schema additions needed:**
+- `groups.payout_frozen` boolean, default false
+- `groups.frozen_at` timestamp
+- `groups.freeze_reason` text
+- Payout batch query must check `payout_frozen = false` before releasing USDC
+
+**Smart contract note:** Freeze enforced at agent server level (skip Step 2 call) — not at contract level. Adding a freeze function to `CanvasEscrowV0.sol` increases audit surface area before the contract is audited.

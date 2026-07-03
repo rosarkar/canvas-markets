@@ -76,7 +76,8 @@ async function sendCampaignList(ctx: Context, fromId: number): Promise<void> {
 
   const text =
     `**Your campaigns**\n\n${campaignSummaryLines(rows)}\n\n` +
-    `_Tap a button below to withdraw unused USDC, pause, or top up._`;
+    `_Tap a button below to withdraw unused USDC, pause, or top up._\n\n` +
+    `Type /start to return to the main menu.`;
 
   const keyboard = buildCampaignListKeyboard(rows);
   if (ctx.callbackQuery) {

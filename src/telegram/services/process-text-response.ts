@@ -31,12 +31,13 @@ export type TextVerificationOutcome =
   | { outcome: "failed"; score: number }
   | { outcome: "re_prompted" };
 
-const DEFAULT_OPEN_TEXT_REPROMPT = "Can you say a bit more? A specific detail or two helps.";
+const BACK_FOOTER = "\n\nType /start to return to the main menu.";
+const DEFAULT_OPEN_TEXT_REPROMPT = "Can you say a bit more? A specific detail or two helps." + BACK_FOOTER;
 const DEFAULT_RANK_REPROMPT =
-  "Almost there. Can you add one sentence on why you ranked your top pick first?";
-const DEFAULT_BINARY_REPROMPT = "Got it — can you add one sentence on why? Just a few words is fine.";
+  "Almost there. Can you add one sentence on why you ranked your top pick first?" + BACK_FOOTER;
+const DEFAULT_BINARY_REPROMPT = "Got it — can you add one sentence on why? Just a few words is fine." + BACK_FOOTER;
 const DEFAULT_BINARY_NO_OPTION_REPROMPT =
-  'Start your reply with the letter of the option you\'re picking (e.g. "A — ...").';
+  'Start your reply with the letter of the option you\'re picking (e.g. "A — ...").' + BACK_FOOTER;
 
 async function sendRePrompt(api: Api, verification: VerificationRow, text: string): Promise<void> {
   await bumpAttemptCount(verification.verificationId);

@@ -13,6 +13,7 @@ import { logger } from "@/utils/logger.js";
 
 const PLACEHOLDER_WALLET = "0x0000000000000000000000000000000000000000";
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
+const BACK_FOOTER = "\n\nType /start to return to the main menu.";
 
 const ADMIN_CHECKLIST =
   "Bot admin permissions needed: **Ban users**, **Restrict members**, **Invite users via link**.\n" +
@@ -69,7 +70,8 @@ async function maybeSendRulesPrompt(
     await bot.api.sendMessage(
       ownerTgId,
       `Do you want to set custom rules for **${groupTitle}**? These will be shown to every new member after they pass verification.\n\n` +
-        "Send your rules as a message, or tap Skip to use the defaults.",
+        "Send your rules as a message, or tap Skip to use the defaults." +
+        BACK_FOOTER,
       { parse_mode: "Markdown", reply_markup: keyboard },
     );
   } catch (err) {
@@ -112,7 +114,8 @@ export function registerRegisterHandler(bot: Bot): void {
           `2. ${ADMIN_CHECKLIST}\n` +
           "3. Run /register inside the group\n\n" +
           "Optional: /register 0xYourBaseWallet (in the group) to set payout wallet now.\n" +
-          "Or DM /wallet 0xYourBaseWallet after registering.",
+          "Or DM /wallet 0xYourBaseWallet after registering." +
+          BACK_FOOTER,
         { parse_mode: "Markdown" },
       );
       return;
@@ -172,7 +175,8 @@ export function registerRegisterHandler(bot: Bot): void {
           `Your payout wallet: ${walletNote}\n\n` +
           "Bot admin permissions needed: **Ban users**, **Restrict members**, **Invite users via link**.\n\n" +
           "In @BotFather: **Group Privacy → Disabled** (so join-request DMs work). " +
-          "Optional: Group Settings → **Chat history for new members → Hidden**.",
+          "Optional: Group Settings → **Chat history for new members → Hidden**." +
+          BACK_FOOTER,
         { parse_mode: "Markdown" },
       );
     } catch {
@@ -244,9 +248,10 @@ export function registerRegisterHandler(bot: Bot): void {
       const currentWallet = groups[0]!.ownerWallet;
       const isPlaceholder = currentWallet === PLACEHOLDER_WALLET;
       await ctx.reply(
-        isPlaceholder
+        (isPlaceholder
           ? "No payout wallet set yet.\n\nSend your Base address:\n`/wallet 0xYourAddress`"
-          : `Current payout wallet:\n\`${currentWallet}\`\n\nTo update it: /wallet 0xNewAddress`,
+          : `Current payout wallet:\n\`${currentWallet}\`\n\nTo update it: /wallet 0xNewAddress`) +
+          BACK_FOOTER,
         { parse_mode: "Markdown" },
       );
       return;
@@ -275,7 +280,7 @@ export function registerRegisterHandler(bot: Bot): void {
       .text("Cancel", "wallet:cancel");
 
     await ctx.reply(
-      `${header}\n\`${wallet}\`\n\nConfirm this address?`,
+      `${header}\n\`${wallet}\`\n\nConfirm this address?` + BACK_FOOTER,
       { parse_mode: "Markdown", reply_markup: keyboard },
     );
   });

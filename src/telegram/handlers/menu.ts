@@ -17,6 +17,7 @@ import { fromMicroUnits } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
+const BACK_FOOTER = "\n\nType /start to return to the main menu.";
 
 type SessionState = { mode: "owner" | "advertiser"; activeTgGroupId?: bigint };
 
@@ -170,7 +171,7 @@ async function showOwnerScreenOrPicker(
     return;
   }
   sessionMode.set(fromId, { mode: "owner" });
-  await send("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+  await send("Which group?\n\nType /start to return to the main menu.", { reply_markup: buildGroupPickerKeyboard(groups) });
 }
 
 /** Resolve the active group from session, or return null if not set. */
@@ -291,7 +292,7 @@ export function registerMenuHandler(bot: Bot): void {
             reply_markup: buildOwnerMenuKeyboard(isAdvertiser),
           });
         } else {
-          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+          await ctx.editMessageText("Which group?\n\nType /start to return to the main menu.", { reply_markup: buildGroupPickerKeyboard(groups) });
         }
         break;
       }
@@ -301,7 +302,7 @@ export function registerMenuHandler(bot: Bot): void {
         const group = await resolveActiveGroup(fromId);
         if (!group) {
           const groups = await getGroupsByOwnerTgId(BigInt(fromId));
-          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+          await ctx.editMessageText("Which group?\n\nType /start to return to the main menu.", { reply_markup: buildGroupPickerKeyboard(groups) });
           break;
         }
         const allStats = await getGroupOwnerMenuStats(BigInt(fromId));
@@ -333,7 +334,7 @@ export function registerMenuHandler(bot: Bot): void {
         const group = await resolveActiveGroup(fromId);
         if (!group) {
           const groups = await getGroupsByOwnerTgId(BigInt(fromId));
-          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+          await ctx.editMessageText("Which group?\n\nType /start to return to the main menu.", { reply_markup: buildGroupPickerKeyboard(groups) });
           break;
         }
         try {
@@ -361,7 +362,7 @@ export function registerMenuHandler(bot: Bot): void {
         const group = await resolveActiveGroup(fromId);
         if (!group) {
           const groups = await getGroupsByOwnerTgId(BigInt(fromId));
-          await ctx.editMessageText("Which group?", { reply_markup: buildGroupPickerKeyboard(groups) });
+          await ctx.editMessageText("Which group?\n\nType /start to return to the main menu.", { reply_markup: buildGroupPickerKeyboard(groups) });
           break;
         }
         startPendingRulesPrompt(fromId, group.groupId);
@@ -376,7 +377,7 @@ export function registerMenuHandler(bot: Bot): void {
 
       case "menu:wallet": {
         pendingMenuWallet.set(fromId, true);
-        await ctx.api.sendMessage(fromId, "Send your new Base payout wallet address.");
+        await ctx.api.sendMessage(fromId, "Send your new Base payout wallet address." + BACK_FOOTER);
         break;
       }
 

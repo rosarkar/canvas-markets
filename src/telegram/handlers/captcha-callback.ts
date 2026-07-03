@@ -136,7 +136,7 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
         }
       }
 
-      await ctx.reply(`❌ Wrong answer. You can try again in 24 hours.`);
+      await ctx.reply(`❌ Wrong answer. You can try again in 24 hours.\n\nType /start to return to the main menu.`);
       logger.info(
         { verificationId, groupId: group.groupId, optionId, entryType: verification.entryType },
         "User failed captcha (DM)",

@@ -61,6 +61,8 @@ interface BuySession {
 
 const sessions = new Map<number, BuySession>();
 
+const BACK_FOOTER = "\n\nType /start to return to the main menu.";
+
 export function hasActiveBuySession(userId: number): boolean {
   return sessions.has(userId);
 }
@@ -306,7 +308,7 @@ async function promptNextField(
   if (!nextKey) {
     session.step = "name_template";
     sessions.set(fromId, session);
-    await ctx.reply('Name this template so you can reuse it later (e.g. "Moonwell vault preference"):');
+    await ctx.reply('Name this template so you can reuse it later (e.g. "Moonwell vault preference"):' + BACK_FOOTER);
     return;
   }
   const spec = fieldSpecFor(session.taskType!, nextKey);
@@ -314,7 +316,7 @@ async function promptNextField(
     session.listBuffer = [];
   }
   sessions.set(fromId, session);
-  await ctx.reply(spec.prompt);
+  await ctx.reply(spec.prompt + BACK_FOOTER);
 }
 
 async function showTemplateChoice(
@@ -333,9 +335,9 @@ async function showTemplateChoice(
   session.step = "template_choice";
   sessions.set(fromId, session);
   await ctx.reply(
-    templates.length > 0
+    (templates.length > 0
       ? "Reuse a saved template, or create a new one:"
-      : "Pick a verification format to customize:",
+      : "Pick a verification format to customize:") + BACK_FOOTER,
     { reply_markup: keyboard },
   );
 }
@@ -352,7 +354,8 @@ async function showConfirm(
       `• Total: ${formatUsd(total)} USDC\n` +
       `• Format: ${FORMAT_LABELS[session.taskType!]}\n` +
       `• Template: ${session.templateName ?? "—"}\n` +
-      (session.taskText ? `• Question: ${session.taskText}` : ""),
+      (session.taskText ? `• Question: ${session.taskText}` : "") +
+      BACK_FOOTER,
     { parse_mode: "Markdown", reply_markup: keyboard },
   );
 }
@@ -388,7 +391,7 @@ export async function showGroupPicker(
   }
 
   await ctx.reply(
-    "**New campaign**\n\nPick a target group. You'll set quantity, bid per verification, and your verification template.",
+    "**New campaign**\n\nPick a target group. You'll set quantity, bid per verification, and your verification template." + BACK_FOOTER,
     { parse_mode: "Markdown", reply_markup: keyboard },
   );
 }
@@ -435,7 +438,7 @@ export async function showBuyEntryMenu(
     ? "**Add budget to your ads**\n\nPick a campaign, then choose how many more verifications to fund."
     : "**Advertiser buy flow**\n\n**Your ads** — add budget to keep running, or start a new campaign:";
 
-  await ctx.reply(intro, { parse_mode: "Markdown", reply_markup: keyboard });
+  await ctx.reply(intro + BACK_FOOTER, { parse_mode: "Markdown", reply_markup: keyboard });
 }
 
 async function showTopUpConfirm(
@@ -451,7 +454,8 @@ async function showTopUpConfirm(
       `Group: ${session.groupTitle}\n` +
       `• +${session.quantity} verifications @ ${formatUsd(session.bidMicroUnits!)} each\n` +
       `• Total: ${formatUsd(total)} USDC\n` +
-      `• Current balance: ${formatUsd(session.remainingBudget ?? 0n)}`,
+      `• Current balance: ${formatUsd(session.remainingBudget ?? 0n)}` +
+      BACK_FOOTER,
     { parse_mode: "Markdown", reply_markup: keyboard },
   );
 }
@@ -516,7 +520,8 @@ export function registerBuyHandler(bot: Bot): void {
       await ctx.reply(
         `**Campaign #${advertiserId}** · ${session.groupTitle}\n\n` +
           `Bid: ${formatUsd(campaign.bidPerVerification)}/join · Balance: ${formatUsd(campaign.remainingBudget)}\n\n` +
-          `How many **additional** verifications do you want to fund? (minimum ${MIN_QUANTITY})`,
+          `How many **additional** verifications do you want to fund? (minimum ${MIN_QUANTITY})` +
+          BACK_FOOTER,
         { parse_mode: "Markdown" },
       );
       return;
@@ -532,7 +537,7 @@ export function registerBuyHandler(bot: Bot): void {
       sessions.set(fromId, session);
       await ctx.answerCallbackQuery();
       await ctx.reply(
-        `Selected **${groupTitle}**.\n\nHow many verifications do you want to fund? (minimum ${MIN_QUANTITY})`,
+        `Selected **${groupTitle}**.\n\nHow many verifications do you want to fund? (minimum ${MIN_QUANTITY})` + BACK_FOOTER,
         { parse_mode: "Markdown" },
       );
       return;
@@ -751,7 +756,7 @@ export function registerBuyHandler(bot: Bot): void {
         ? `Current top bid: ${formatUsd(topBid.bidPerVerification)}. Yours must be higher.`
         : `Minimum bid: ${formatUsd(config.constants.MIN_BID_MICROUNITS)}.`;
       await ctx.reply(
-        `Bid per verification in USD (e.g. \`0.01\`, \`.01\`, or \`$0.35\`).\n${hint}`,
+        `Bid per verification in USD (e.g. \`0.01\`, \`.01\`, or \`$0.35\`).\n${hint}` + BACK_FOOTER,
         { parse_mode: "Markdown" },
       );
       return;

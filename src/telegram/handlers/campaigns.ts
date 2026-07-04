@@ -9,6 +9,7 @@ import {
 } from "@/adapters/bidding.js";
 import { getAdvertiserByTgId } from "@/adapters/advertisers.adapter.js";
 import { db } from "@/db.js";
+import { sendAdminAlert } from "@/services/admin-alerts.js";
 import { releaseEscrowPayout } from "@/services/escrow.js";
 import { promoteNextBidder, wasTopBid } from "@/services/bid-ladder.js";
 import { showBuyEntryMenu } from "@/telegram/handlers/buy.js";
@@ -355,12 +356,25 @@ export function registerCampaignHandlers(bot: Bot): void {
         refundNote = tx
           ? `\n\nRefund tx: \`${tx.slice(0, 10)}…\``
           : "\n\n⚠️ Refund tx failed — contact support.";
+        if (!tx) {
+          await sendAdminAlert(
+            `Refund failed — campaign #${id} withdrawn by advertiser tg ${fromId}: ` +
+              `releasePayout of ${formatUsdMicro(result.refundMicro)} to ${refundWallet} returned no tx (check logs). ` +
+              `Funds remain in escrow; needs manual retry.`,
+            ctx.api,
+          );
+        }
       } else {
         logger.error(
           { campaignId: id, advertiserTgId: fromId },
           "Withdraw refund skipped — no wallet on record for advertiser",
         );
         refundNote = "\n\n⚠️ No wallet on record for your account — contact support to receive your refund.";
+        await sendAdminAlert(
+          `Refund blocked — campaign #${id} withdrawn by advertiser tg ${fromId} with no wallet linked. ` +
+            `${formatUsdMicro(result.refundMicro)} remains in escrow; needs manual refund once they link a wallet.`,
+          ctx.api,
+        );
       }
     }
 

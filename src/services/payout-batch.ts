@@ -1,5 +1,6 @@
 import { db } from "@/db.js";
 import { config } from "@/config/index.js";
+import { previewIds, sendAdminAlert } from "@/services/admin-alerts.js";
 import { releaseEscrowPayout, readCampaignBalance } from "@/services/escrow.js";
 import { formatUsdMicro } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
@@ -21,6 +22,7 @@ interface OwnerLeg {
  */
 interface CampaignPayout {
   advertiserId: number;
+  groupTitle: string;
   ownerLegs: Map<string, OwnerLeg>;
   feeMicro: bigint;
   feeVerificationIds: string[];
@@ -39,6 +41,21 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
       return { txCount: 0, totalMicro: 0n };
     }
     locked = true;
+
+    // Optional watchdog: rows claimed to 'processing' by an earlier run that never
+    // resolved (crashed batch, missed final status write). Nothing retries these
+    // automatically — surface them so they get looked at instead of rotting silently.
+    const stuck = await client.query<{ verification_id: string }>(
+      `SELECT verification_id FROM verifications
+       WHERE payout_status = 'processing' AND updated_at < NOW() - INTERVAL '6 hours'`,
+    );
+    if (stuck.rows.length > 0) {
+      const ids = stuck.rows.map((r) => r.verification_id);
+      await sendAdminAlert(
+        `${ids.length} payout row(s) stuck in 'processing' for >6h (crashed batch?): ${previewIds(ids)}. ` +
+          `Not retried automatically — check payout_tx_hash: null means the transfer never fired.`,
+      );
+    }
 
     const feeBps = config.payments.platformFeeBps;
     const companyWallet = config.payments.companyWallet?.toLowerCase() ?? null;
@@ -61,11 +78,12 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
         advertiser_id: number;
         locked_bid_price: string;
         owner_wallet: string;
+        group_title: string | null;
       }>(
         // PASSED is now followed by a rules-agreement gate (RULES_PENDING/ADMITTED/RULES_TIMED_OUT) —
         // billing already settled at PASSED, independent of whether the user later agreed, so
         // treat any post-pass state as payable.
-        `SELECT v.verification_id, v.advertiser_id, v.locked_bid_price, g.owner_wallet
+        `SELECT v.verification_id, v.advertiser_id, v.locked_bid_price, g.owner_wallet, g.group_title
          FROM verifications v
          JOIN groups g ON g.group_id = v.group_id
          WHERE v.payout_status = 'pending'
@@ -101,6 +119,7 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
 
       const campaign = campaigns.get(row.advertiser_id) ?? {
         advertiserId: row.advertiser_id,
+        groupTitle: row.group_title ?? "unknown group",
         ownerLegs: new Map<string, OwnerLeg>(),
         feeMicro: 0n,
         feeVerificationIds: [],
@@ -168,6 +187,11 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
             [campaign.feeVerificationIds],
           );
         }
+        await sendAdminAlert(
+          `Payout failed — campaign #${campaign.advertiserId} (${campaign.groupTitle}): ` +
+            `insufficient escrow balance (need ${formatUsdMicro(combined)}, have ${formatUsdMicro(onChain)}). ` +
+            `${campaignVerificationIds.length} verification(s) marked failed: ${previewIds(campaignVerificationIds)}`,
+        );
         continue;
       }
 
@@ -182,6 +206,11 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
             `UPDATE verifications SET payout_status = 'failed', updated_at = NOW()
              WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'processing'`,
             [leg.verificationIds],
+          );
+          await sendAdminAlert(
+            `Payout failed — campaign #${campaign.advertiserId} (${campaign.groupTitle}): ` +
+              `on-chain transfer of ${formatUsdMicro(leg.amountMicro)} to owner ${leg.recipient} returned no tx (check logs). ` +
+              `${leg.verificationIds.length} verification(s) marked failed: ${previewIds(leg.verificationIds)}`,
           );
           continue;
         }
@@ -210,6 +239,13 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
            WHERE verification_id = ANY($1::uuid[])`,
           [campaign.feeVerificationIds, feeTxHash ? "paid" : "failed", feeTxHash],
         );
+        if (!feeTxHash) {
+          await sendAdminAlert(
+            `Fee transfer failed — campaign #${campaign.advertiserId} (${campaign.groupTitle}): ` +
+              `${formatUsdMicro(campaign.feeMicro)} platform fee returned no tx (check logs). ` +
+              `Owner payouts unaffected; fee_status marked failed on ${campaign.feeVerificationIds.length} verification(s).`,
+          );
+        }
         if (feeTxHash) {
           txCount += 1;
           totalMicro += campaign.feeMicro;

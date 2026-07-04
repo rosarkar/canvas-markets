@@ -13,6 +13,8 @@ interface Config {
     webhookUrl: string;
     webhookSecret: string;
     webhookPort: number;
+    /** Telegram user ID that receives operational alert DMs (empty = alerts disabled). */
+    adminTelegramId: string;
   };
   kimi: {
     apiKey: string;
@@ -63,6 +65,7 @@ export const config: Config = {
       process.env.TELEGRAM_WEBHOOK_SECRET?.trim(),
     ),
     webhookPort: parseInt(process.env.PORT ?? "3000", 10),
+    adminTelegramId: process.env.ADMIN_TELEGRAM_ID?.trim() ?? "",
   },
   kimi: {
     apiKey: process.env.KIMI_API_KEY?.trim() ?? "",

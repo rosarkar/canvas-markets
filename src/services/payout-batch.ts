@@ -43,26 +43,51 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
     const feeBps = config.payments.platformFeeBps;
     const companyWallet = config.payments.companyWallet?.toLowerCase() ?? null;
 
-    const pending = await client.query<{
-      verification_id: string;
-      advertiser_id: number;
-      locked_bid_price: string;
-      owner_wallet: string;
-    }>(
-      // PASSED is now followed by a rules-agreement gate (RULES_PENDING/ADMITTED/RULES_TIMED_OUT) —
-      // billing already settled at PASSED, independent of whether the user later agreed, so
-      // treat any post-pass state as payable.
-      `SELECT v.verification_id, v.advertiser_id, v.locked_bid_price, g.owner_wallet
-       FROM verifications v
-       JOIN groups g ON g.group_id = v.group_id
-       WHERE v.payout_status = 'pending'
-         AND v.state IN ('PASSED', 'RULES_PENDING', 'ADMITTED', 'RULES_TIMED_OUT')
-         AND v.advertiser_id IS NOT NULL AND v.locked_bid_price IS NOT NULL
-       FOR UPDATE SKIP LOCKED`,
-    );
+    // Explicit transaction so FOR UPDATE SKIP LOCKED actually holds: without BEGIN,
+    // each statement autocommits and the row locks evaporate the moment the SELECT
+    // returns. The transaction spans the SELECT plus the claim UPDATE that flips the
+    // rows to 'processing', so a competing runner can neither lock nor re-select them.
+    // It deliberately does NOT span the on-chain transfers below: if it did, a crash
+    // mid-batch (e.g. a Railway deploy restart) would roll every row back to 'pending'
+    // after the USDC had already moved, and the next batch would pay everyone twice.
+    // Crashing after the claim instead strands rows in 'processing' — unpaid, never
+    // double-paid — the safe direction (stuck-'processing' recovery is tracked in
+    // BUILD.md).
+    await client.query("BEGIN");
+    let pending;
+    try {
+      pending = await client.query<{
+        verification_id: string;
+        advertiser_id: number;
+        locked_bid_price: string;
+        owner_wallet: string;
+      }>(
+        // PASSED is now followed by a rules-agreement gate (RULES_PENDING/ADMITTED/RULES_TIMED_OUT) —
+        // billing already settled at PASSED, independent of whether the user later agreed, so
+        // treat any post-pass state as payable.
+        `SELECT v.verification_id, v.advertiser_id, v.locked_bid_price, g.owner_wallet
+         FROM verifications v
+         JOIN groups g ON g.group_id = v.group_id
+         WHERE v.payout_status = 'pending'
+           AND v.state IN ('PASSED', 'RULES_PENDING', 'ADMITTED', 'RULES_TIMED_OUT')
+           AND v.advertiser_id IS NOT NULL AND v.locked_bid_price IS NOT NULL
+         FOR UPDATE OF v SKIP LOCKED`,
+      );
 
-    if (pending.rows.length === 0) {
-      return { txCount: 0, totalMicro: 0n };
+      if (pending.rows.length === 0) {
+        await client.query("COMMIT");
+        return { txCount: 0, totalMicro: 0n };
+      }
+
+      await client.query(
+        `UPDATE verifications SET payout_status = 'processing', updated_at = NOW()
+         WHERE verification_id = ANY($1::uuid[])`,
+        [pending.rows.map((r) => r.verification_id)],
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
     }
 
     const campaigns = new Map<number, CampaignPayout>();
@@ -133,7 +158,7 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
         ];
         await client.query(
           `UPDATE verifications SET payout_status = 'failed', updated_at = NOW()
-           WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'pending'`,
+           WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'processing'`,
           [campaignVerificationIds],
         );
         if (campaign.feeVerificationIds.length > 0) {
@@ -146,15 +171,10 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
         continue;
       }
 
-      // Owner legs — write payout_status / payout_tx_hash only.
+      // Owner legs — write payout_status / payout_tx_hash only. Rows were already
+      // claimed as 'processing' inside the transaction above.
       for (const leg of campaign.ownerLegs.values()) {
         if (leg.amountMicro <= 0n) continue;
-
-        await client.query(
-          `UPDATE verifications SET payout_status = 'processing', updated_at = NOW()
-           WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'pending'`,
-          [leg.verificationIds],
-        );
 
         const txHash = await releaseEscrowPayout(campaign.advertiserId, leg.recipient, leg.amountMicro);
         if (!txHash) {

@@ -6,11 +6,24 @@ import { logger } from "@/utils/logger.js";
 
 const PAYOUT_LOCK_KEY = 83927401;
 
-interface PayoutAggregate {
-  advertiserId: number;
+interface OwnerLeg {
   recipient: string;
   amountMicro: bigint;
   verificationIds: string[];
+}
+
+/**
+ * Per-campaign payout plan. The owner leg(s) and the platform-fee leg are tracked
+ * separately: owner outcomes write payout_status/payout_tx_hash, fee outcomes write
+ * fee_status/fee_tx_hash. A verification appears in exactly one owner leg and (when a
+ * fee applies) the campaign's fee leg — the two legs can no longer clobber each
+ * other's status.
+ */
+interface CampaignPayout {
+  advertiserId: number;
+  ownerLegs: Map<string, OwnerLeg>;
+  feeMicro: bigint;
+  feeVerificationIds: string[];
 }
 
 export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: bigint }> {
@@ -52,7 +65,7 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
       return { txCount: 0, totalMicro: 0n };
     }
 
-    const aggMap = new Map<string, PayoutAggregate>();
+    const campaigns = new Map<number, CampaignPayout>();
 
     for (const row of pending.rows) {
       const total = BigInt(row.locked_bid_price);
@@ -61,29 +74,29 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
         : total;
       const feeMicro = total - ownerMicro;
 
-      const ownerKey = `${row.advertiser_id}:${row.owner_wallet.toLowerCase()}`;
-      const ownerAgg = aggMap.get(ownerKey) ?? {
+      const campaign = campaigns.get(row.advertiser_id) ?? {
         advertiserId: row.advertiser_id,
+        ownerLegs: new Map<string, OwnerLeg>(),
+        feeMicro: 0n,
+        feeVerificationIds: [],
+      };
+
+      const ownerKey = row.owner_wallet.toLowerCase();
+      const leg = campaign.ownerLegs.get(ownerKey) ?? {
         recipient: row.owner_wallet,
         amountMicro: 0n,
         verificationIds: [],
       };
-      ownerAgg.amountMicro += ownerMicro;
-      ownerAgg.verificationIds.push(row.verification_id);
-      aggMap.set(ownerKey, ownerAgg);
+      leg.amountMicro += ownerMicro;
+      leg.verificationIds.push(row.verification_id);
+      campaign.ownerLegs.set(ownerKey, leg);
 
       if (companyWallet && feeMicro > 0n) {
-        const feeKey = `${row.advertiser_id}:${companyWallet}`;
-        const feeAgg = aggMap.get(feeKey) ?? {
-          advertiserId: row.advertiser_id,
-          recipient: companyWallet,
-          amountMicro: 0n,
-          verificationIds: [],
-        };
-        feeAgg.amountMicro += feeMicro;
-        feeAgg.verificationIds.push(row.verification_id);
-        aggMap.set(feeKey, feeAgg);
+        campaign.feeMicro += feeMicro;
+        campaign.feeVerificationIds.push(row.verification_id);
       }
+
+      campaigns.set(row.advertiser_id, campaign);
     }
 
     const batchIdRes = await client.query<{ batch_id: string }>(
@@ -96,49 +109,93 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
     let totalMicro = 0n;
     const allVerificationIds = new Set<string>();
 
-    for (const agg of aggMap.values()) {
-      if (agg.amountMicro <= 0n) continue;
+    for (const campaign of campaigns.values()) {
+      const ownerTotal = [...campaign.ownerLegs.values()].reduce(
+        (sum, leg) => sum + leg.amountMicro,
+        0n,
+      );
+      const combined = ownerTotal + campaign.feeMicro;
+      if (combined <= 0n) continue;
 
-      const onChain = await readCampaignBalance(agg.advertiserId);
-      if (onChain < agg.amountMicro) {
+      // Balance check covers owner + fee combined — never fund one leg by starving the other.
+      const onChain = await readCampaignBalance(campaign.advertiserId);
+      if (onChain < combined) {
         logger.error(
-          { advertiserId: agg.advertiserId, onChain: onChain.toString(), need: agg.amountMicro.toString() },
-          "Insufficient on-chain campaign balance for payout batch",
+          {
+            advertiserId: campaign.advertiserId,
+            onChain: onChain.toString(),
+            need: combined.toString(),
+          },
+          "Insufficient on-chain campaign balance for payout batch (owner + fee)",
         );
+        const campaignVerificationIds = [
+          ...new Set([...campaign.ownerLegs.values()].flatMap((leg) => leg.verificationIds)),
+        ];
         await client.query(
           `UPDATE verifications SET payout_status = 'failed', updated_at = NOW()
-           WHERE verification_id = ANY($1::uuid[])`,
-          [agg.verificationIds],
+           WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'pending'`,
+          [campaignVerificationIds],
         );
+        if (campaign.feeVerificationIds.length > 0) {
+          await client.query(
+            `UPDATE verifications SET fee_status = 'failed', updated_at = NOW()
+             WHERE verification_id = ANY($1::uuid[])`,
+            [campaign.feeVerificationIds],
+          );
+        }
         continue;
       }
 
-      await client.query(
-        `UPDATE verifications SET payout_status = 'processing', updated_at = NOW()
-         WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'pending'`,
-        [agg.verificationIds],
-      );
+      // Owner legs — write payout_status / payout_tx_hash only.
+      for (const leg of campaign.ownerLegs.values()) {
+        if (leg.amountMicro <= 0n) continue;
 
-      const txHash = await releaseEscrowPayout(agg.advertiserId, agg.recipient, agg.amountMicro);
-      if (!txHash) {
         await client.query(
-          `UPDATE verifications SET payout_status = 'failed', updated_at = NOW()
-           WHERE verification_id = ANY($1::uuid[])`,
-          [agg.verificationIds],
+          `UPDATE verifications SET payout_status = 'processing', updated_at = NOW()
+           WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'pending'`,
+          [leg.verificationIds],
         );
-        continue;
+
+        const txHash = await releaseEscrowPayout(campaign.advertiserId, leg.recipient, leg.amountMicro);
+        if (!txHash) {
+          await client.query(
+            `UPDATE verifications SET payout_status = 'failed', updated_at = NOW()
+             WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'processing'`,
+            [leg.verificationIds],
+          );
+          continue;
+        }
+
+        await client.query(
+          `UPDATE verifications
+           SET payout_status = 'paid', payout_tx_hash = $2, payout_batch_id = $3, updated_at = NOW()
+           WHERE verification_id = ANY($1::uuid[]) AND payout_status = 'processing'`,
+          [leg.verificationIds, txHash, batchId],
+        );
+
+        txCount += 1;
+        totalMicro += leg.amountMicro;
+        for (const id of leg.verificationIds) allVerificationIds.add(id);
       }
 
-      await client.query(
-        `UPDATE verifications
-         SET payout_status = 'paid', payout_tx_hash = $2, payout_batch_id = $3, updated_at = NOW()
-         WHERE verification_id = ANY($1::uuid[])`,
-        [agg.verificationIds, txHash, batchId],
-      );
-
-      txCount += 1;
-      totalMicro += agg.amountMicro;
-      for (const id of agg.verificationIds) allVerificationIds.add(id);
+      // Fee leg — write fee_status / fee_tx_hash only, regardless of owner-leg outcomes.
+      if (companyWallet && campaign.feeMicro > 0n) {
+        const feeTxHash = await releaseEscrowPayout(
+          campaign.advertiserId,
+          companyWallet,
+          campaign.feeMicro,
+        );
+        await client.query(
+          `UPDATE verifications SET fee_status = $2, fee_tx_hash = $3, updated_at = NOW()
+           WHERE verification_id = ANY($1::uuid[])`,
+          [campaign.feeVerificationIds, feeTxHash ? "paid" : "failed", feeTxHash],
+        );
+        if (feeTxHash) {
+          txCount += 1;
+          totalMicro += campaign.feeMicro;
+          for (const id of campaign.feeVerificationIds) allVerificationIds.add(id);
+        }
+      }
     }
 
     await client.query(

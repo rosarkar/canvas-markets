@@ -120,6 +120,10 @@ export async function createCanvasTables(): Promise<void> {
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS payout_status TEXT;
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS payout_tx_hash TEXT;
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS payout_batch_id UUID;
+      -- Platform-fee leg tracked separately from the owner leg so a fee transfer
+      -- outcome can never overwrite payout_status (owner payout bookkeeping).
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS fee_status TEXT;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS fee_tx_hash TEXT;
 
       CREATE INDEX IF NOT EXISTS idx_verifications_payout_pending
         ON verifications (payout_status) WHERE payout_status = 'pending';

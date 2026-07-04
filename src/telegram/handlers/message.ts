@@ -110,6 +110,11 @@ async function handleDmTextResponse(
     return true;
   }
 
+  if (result.outcome === "already_processed") {
+    // A concurrent update won the compare-and-swap — it owns all user-facing replies.
+    return true;
+  }
+
   // On "passed", no reply here — completeVerificationPass (called inside
   // processTextVerificationResponse) sends the rules-agreement DM, which gates
   // admission until the user taps "I agree".
@@ -148,9 +153,12 @@ async function handleWebAppData(ctx: {
   const group = await getGroupById(verification.groupId);
   if (!group) return false;
 
-  await transitionState(verification.verificationId, VerificationState.RESPONSE_RECEIVED, {
+  // Compare-and-swap: bail if a concurrent update already claimed this verification.
+  const claimed = await transitionState(verification.verificationId, VerificationState.RESPONSE_RECEIVED, {
     responseText: parsed.optionLabel,
+    expectedState: [VerificationState.TASK_SENT, VerificationState.DEEP_LINK_SENT],
   });
+  if (!claimed) return true;
 
   const chat = await ctx.api.getChat(Number(group.tgGroupId));
   const groupTitle =
@@ -158,7 +166,10 @@ async function handleWebAppData(ctx: {
   const me = await ctx.api.getMe();
   const botUsername = me.username ?? "CanvasProtocolBot";
 
-  await transitionState(verification.verificationId, VerificationState.PASSED);
+  const marked = await transitionState(verification.verificationId, VerificationState.PASSED, {
+    expectedState: VerificationState.RESPONSE_RECEIVED,
+  });
+  if (!marked) return true;
   await completeVerificationPass(ctx.api, verification.verificationId, group, groupTitle, botUsername);
 
   // No reply here — completeVerificationPass sends the rules-agreement DM, which

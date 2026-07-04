@@ -119,9 +119,22 @@ export async function transitionState(
     bonusMicroUnits?: bigint;
     /** Overrides expires_at — e.g. a fresh 10-minute window for the RULES_PENDING gate. */
     expiresAt?: Date;
+    /**
+     * Compare-and-swap guard: only transition if the row is currently in one of these
+     * states. Prevents two concurrent webhook updates from both driving the same
+     * verification through the finalize path (double scoring, double payout accrual).
+     */
+    expectedState?: State | State[];
   },
-): Promise<void> {
-  await db.query(
+): Promise<boolean> {
+  const expected =
+    extra?.expectedState == null
+      ? null
+      : Array.isArray(extra.expectedState)
+        ? extra.expectedState
+        : [extra.expectedState];
+
+  const res = await db.query(
     `UPDATE verifications
      SET state = $2,
          locked_bid_price = COALESCE($3, locked_bid_price) + COALESCE($10, 0),
@@ -133,7 +146,8 @@ export async function transitionState(
          task_payload = COALESCE($9, task_payload),
          expires_at = COALESCE($11, expires_at),
          updated_at = NOW()
-     WHERE verification_id = $1`,
+     WHERE verification_id = $1
+       AND ($12::text[] IS NULL OR state = ANY($12::text[]))`,
     [
       verificationId,
       newState,
@@ -146,13 +160,17 @@ export async function transitionState(
       extra?.taskPayload != null ? JSON.stringify(extra.taskPayload) : null,
       extra?.bonusMicroUnits?.toString() ?? null,
       extra?.expiresAt ?? null,
+      expected,
     ],
   );
+
+  if ((res.rowCount ?? 0) === 0) return false;
 
   const row = await getVerificationByToken(verificationId);
   if (row && COOLDOWN_STATES.includes(newState)) {
     await setCooldown(row.tgUserId, row.groupId);
   }
+  return true;
 }
 
 /** Bump attempt_count after sending a one-shot re-prompt for a thin/incomplete reply. */

@@ -29,7 +29,9 @@ import { logger } from "@/utils/logger.js";
 export type TextVerificationOutcome =
   | { outcome: "passed"; score: number }
   | { outcome: "failed"; score: number }
-  | { outcome: "re_prompted" };
+  | { outcome: "re_prompted" }
+  /** A concurrent update already claimed this verification — do nothing, send nothing. */
+  | { outcome: "already_processed" };
 
 const BACK_FOOTER = "\n\nType /start to return to the main menu.";
 const DEFAULT_OPEN_TEXT_REPROMPT = "Can you say a bit more? A specific detail or two helps." + BACK_FOOTER;
@@ -55,10 +57,26 @@ async function finalize(
   responseText: string,
   bonusMicroUnits?: bigint,
 ): Promise<TextVerificationOutcome> {
-  await transitionState(verification.verificationId, VerificationState.RESPONSE_RECEIVED, {
-    responseText,
+  // Compare-and-swap: claim the verification for this update. If another concurrent
+  // webhook update already moved it past TASK_SENT/DEEP_LINK_SENT, bail — otherwise
+  // both would score, pass, and accrue payout for the same verification.
+  const claimed = await transitionState(
+    verification.verificationId,
+    VerificationState.RESPONSE_RECEIVED,
+    {
+      responseText,
+      expectedState: [VerificationState.TASK_SENT, VerificationState.DEEP_LINK_SENT],
+    },
+  );
+  if (!claimed) return { outcome: "already_processed" };
+
+  // TODO for Mateo: the TTL recovery sweep must cover SCORING and RESPONSE_RECEIVED
+  // states, not just DEEP_LINK_SENT and TASK_SENT. If api.getChat() or api.getMe()
+  // throws here, the row is stranded in SCORING and the user is muted forever with
+  // no retry path.
+  await transitionState(verification.verificationId, VerificationState.SCORING, {
+    expectedState: VerificationState.RESPONSE_RECEIVED,
   });
-  await transitionState(verification.verificationId, VerificationState.SCORING);
 
   // No active advertiser — admit on any non-empty response without calling Kimi.
   const noAdvertiser = verification.advertiserId == null;
@@ -76,19 +94,23 @@ async function finalize(
   const botUsername = me.username ?? "CanvasProtocolBot";
 
   if (passed) {
-    await transitionState(verification.verificationId, VerificationState.PASSED, {
+    const marked = await transitionState(verification.verificationId, VerificationState.PASSED, {
       kimiScore: result.score,
       bonusMicroUnits,
+      expectedState: VerificationState.SCORING,
     });
+    if (!marked) return { outcome: "already_processed" };
     await completeVerificationPass(api, verification.verificationId, group, groupTitle, botUsername);
     logger.info(
       { verificationId: verification.verificationId, score: result.score, method: result.method },
       "User passed text verification",
     );
   } else {
-    await transitionState(verification.verificationId, VerificationState.KIMI_FAILED, {
+    const marked = await transitionState(verification.verificationId, VerificationState.KIMI_FAILED, {
       kimiScore: result.score,
+      expectedState: VerificationState.SCORING,
     });
+    if (!marked) return { outcome: "already_processed" };
     await transitionState(verification.verificationId, VerificationState.FAILED);
     await completeVerificationFail(api, verification, group);
     logger.info(

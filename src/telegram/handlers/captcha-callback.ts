@@ -86,9 +86,16 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
 
     const isCorrect = isPassingMcAnswer(taskType, correctOptionId, optionId);
 
-    await transitionState(verificationId, VerificationState.RESPONSE_RECEIVED, {
+    // Compare-and-swap: a double-tap (or duplicate webhook delivery) loses the race
+    // here instead of driving a second pass/fail through payout accrual.
+    const claimed = await transitionState(verificationId, VerificationState.RESPONSE_RECEIVED, {
       responseText: optionLabel,
+      expectedState: [VerificationState.TASK_SENT, VerificationState.DEEP_LINK_SENT],
     });
+    if (!claimed) {
+      await ctx.answerCallbackQuery({ text: "This verification is no longer active." });
+      return;
+    }
 
     const messageId = ctx.callbackQuery.message?.message_id;
     const dmChatId = ctx.callbackQuery.message?.chat.id;

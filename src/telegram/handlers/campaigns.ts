@@ -7,8 +7,9 @@ import {
   withdrawCampaign,
   type AdvertiserCampaignRow,
 } from "@/adapters/bidding.js";
+import { getAdvertiserByTgId } from "@/adapters/advertisers.adapter.js";
 import { db } from "@/db.js";
-import { refundUnusedBudget } from "@/services/escrow.js";
+import { releaseEscrowPayout } from "@/services/escrow.js";
 import { promoteNextBidder, wasTopBid } from "@/services/bid-ladder.js";
 import { showBuyEntryMenu } from "@/telegram/handlers/buy.js";
 import { formatUsdMicro } from "@/utils/usdc.js";
@@ -333,16 +334,34 @@ export function registerCampaignHandlers(bot: Bot): void {
 
     let refundNote = "";
     if (result.refundMicro > 0n) {
-      const tx = await refundUnusedBudget(id, result.refundMicro);
-      if (tx) {
-        await db.query(`UPDATE advertiser_budgets SET refund_tx_hash = $2 WHERE advertiser_id = $1`, [
-          id,
-          tx,
-        ]);
+      // TODO for Mateo: fix campaignDepositor overwrite in CanvasEscrowV0.sol V1 — any
+      // address can call depositBudget and overwrite the refund recipient. This
+      // application-layer workaround routes refunds through our DB wallet record
+      // (releasePayout to the advertiser's registered wallet, instead of
+      // refundUnusedBudget which pays whoever last touched campaignDepositor) until
+      // the contract is redeployed.
+      const advertiser = await getAdvertiserByTgId(BigInt(fromId));
+      const refundWallet = advertiser?.walletAddress ?? null;
+
+      let tx: string | null = null;
+      if (refundWallet) {
+        tx = await releaseEscrowPayout(id, refundWallet, result.refundMicro);
+        if (tx) {
+          await db.query(`UPDATE advertiser_budgets SET refund_tx_hash = $2 WHERE advertiser_id = $1`, [
+            id,
+            tx,
+          ]);
+        }
+        refundNote = tx
+          ? `\n\nRefund tx: \`${tx.slice(0, 10)}…\``
+          : "\n\n⚠️ Refund tx failed — contact support.";
+      } else {
+        logger.error(
+          { campaignId: id, advertiserTgId: fromId },
+          "Withdraw refund skipped — no wallet on record for advertiser",
+        );
+        refundNote = "\n\n⚠️ No wallet on record for your account — contact support to receive your refund.";
       }
-      refundNote = tx
-        ? `\n\nRefund tx: \`${tx.slice(0, 10)}…\``
-        : "\n\n⚠️ Refund tx failed — contact support.";
     }
 
     if (groupId != null && topBefore) {

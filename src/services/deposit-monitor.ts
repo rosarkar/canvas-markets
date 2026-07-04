@@ -19,6 +19,13 @@ import { logger } from "@/utils/logger.js";
 
 let polling = false;
 
+/**
+ * Max blocks per getContractEvents call. Most RPC providers cap eth_getLogs ranges;
+ * an unbounded range after downtime would fail forever and wedge the cursor. Chunking
+ * lets the monitor catch up incrementally, advancing the cursor per chunk.
+ */
+const MAX_BLOCK_RANGE = 2000n;
+
 async function getLastBlock(): Promise<bigint> {
   const res = await db.query<{ last_block: string }>(
     `SELECT last_block FROM deposit_cursor WHERE id = 1`,
@@ -204,31 +211,34 @@ export async function pollEscrowDeposits(): Promise<void> {
     const latestBlock = await client.getBlockNumber();
     let fromBlock = await getLastBlock();
     if (fromBlock === 0n) {
-      fromBlock = latestBlock > 2000n ? latestBlock - 2000n : 0n;
+      fromBlock = latestBlock > MAX_BLOCK_RANGE ? latestBlock - MAX_BLOCK_RANGE : 0n;
     }
 
-    if (fromBlock > latestBlock) {
-      polling = false;
-      return;
+    while (fromBlock <= latestBlock) {
+      const chunkEnd =
+        fromBlock + MAX_BLOCK_RANGE - 1n < latestBlock
+          ? fromBlock + MAX_BLOCK_RANGE - 1n
+          : latestBlock;
+
+      const logs = await client.getContractEvents({
+        address: escrowAddress,
+        abi: CANVAS_ESCROW_ABI,
+        eventName: "BudgetDeposited",
+        fromBlock,
+        toBlock: chunkEnd,
+      });
+
+      for (const log of logs) {
+        const campaignId = Number(log.args.campaignId);
+        const amount = log.args.amount as bigint;
+        const txHash = log.transactionHash;
+        if (!campaignId || !txHash) continue;
+        await processDepositLog(campaignId, amount, txHash);
+      }
+
+      await setLastBlock(chunkEnd + 1n);
+      fromBlock = chunkEnd + 1n;
     }
-
-    const logs = await client.getContractEvents({
-      address: escrowAddress,
-      abi: CANVAS_ESCROW_ABI,
-      eventName: "BudgetDeposited",
-      fromBlock,
-      toBlock: latestBlock,
-    });
-
-    for (const log of logs) {
-      const campaignId = Number(log.args.campaignId);
-      const amount = log.args.amount as bigint;
-      const txHash = log.transactionHash;
-      if (!campaignId || !txHash) continue;
-      await processDepositLog(campaignId, amount, txHash);
-    }
-
-    await setLastBlock(latestBlock + 1n);
   } catch (err) {
     logger.error({ err }, "Escrow deposit poll failed");
   } finally {

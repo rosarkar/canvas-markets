@@ -80,9 +80,12 @@ async function finalize(
 
   // No active advertiser — admit on any non-empty response without calling Kimi.
   const noAdvertiser = verification.advertiserId == null;
+  // failClosed: this Kimi call only runs for advertiser-funded verifications (see the
+  // bypass above) — on Kimi errors, fail the verification instead of falling back to
+  // the gameable keyword scorer, since a pass moves real USDC.
   const result = noAdvertiser
     ? { score: 100, method: "manual" as const }
-    : await scoreWithKimi(scoringPrompt, responseText);
+    : await scoreWithKimi(scoringPrompt, responseText, { failClosed: true });
   const passed = noAdvertiser || passesThreshold(result);
 
   const group = await getGroupById(verification.groupId);

@@ -8,6 +8,13 @@
 
 ## Changelog
 
+### July 4, 2026 — third batch (commits 3c55f56 → 8956c82)
+
+- `3c55f56` — **Admin DM alerts for silent failures:** new `src/services/admin-alerts.ts` (`sendAdminAlert` — never throws, no-op when unset) + `ADMIN_TELEGRAM_ID` env var (added to config and `.env.example`; must be set in Railway or alerts stay disabled). Alert sites: payout failures in the batch (insufficient escrow balance, owner-leg transfer failure, fee-leg failure), refund failures on withdraw (tx failure and no-wallet-linked), rules-pending sweep firings (one aggregated DM per sweep), and a watchdog for rows stuck in `processing` >6h at the start of each batch run. Plain text DMs with campaign #, group title, dollar amounts, truncated verification IDs. Hook comment left in `index.ts` for Mateo's future recovery sweep.
+- `8956c82` — **Wallet signature verification on read endpoints:** `/api/advertiser` and `/api/group-owner` now require the caller to sign `Canvas auth: <epoch-ms>` with the queried wallet (`x-canvas-timestamp`/`x-canvas-signature` headers or `ts`/`sig` query params). Timestamp must be within 5 minutes (replay protection). Verification uses viem's public-client `verifyMessage` on Base RPC so both EOAs and Coinbase smart wallets (ERC-1271/6492) verify correctly. Bad signature → 401 with the expected message format; RPC outage → 503 (fail closed). New middleware in `src/api/wallet-auth.ts`.
+
+---
+
 ### July 4, 2026 — second batch (commits 9494135 → 3ae77d9 → 915e475)
 
 - `9494135` — **npm audit fix:** `ws` moved to 8.21.0, `viem` to 2.54.3, 0 production vulnerabilities. Low-severity esbuild advisory remains in dev dependencies only (Windows-only, does not ship to Railway).
@@ -211,6 +218,13 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ### Mateo — Fix before approaching advertisers
 
+**Dashboards need a connect-wallet-and-sign step (July 4, commit `8956c82`)**
+- **Files:** `public/advertiser/index.html` (fetch at ~line 320), `public/group-owner/index.html` (fetch at ~line 281)
+- **Symptom:** Both dashboards still fetch with a bare pasted wallet address. Now that `/api/advertiser` and `/api/group-owner` require a signature, the dashboards get 401s and show their empty/error states — no real data until fixed.
+- **Fix:** Add a connect-wallet flow (Coinbase smart wallet SDK is already used on the deposit page) that signs `Canvas auth: <Date.now()>` and passes `ts` + `sig` alongside `wallet` on the fetch. The 401 response body echoes the exact message format expected.
+
+---
+
 **`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector**
 - **File:** `contracts/CanvasEscrowV0.sol` — `depositBudget` is permissionless and overwrites the refund recipient (`campaignDepositor[campaignId]`) on every call. An attacker can deposit dust to any funded campaign and become the refund recipient.
 - **Fix:** Needs `if (campaignDepositor[id] == address(0))` guard or an explicit refund address param in V1 before audit.
@@ -274,11 +288,8 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
-**Read endpoints trust bare wallet strings**
-- **Files:** `src/api/advertiser.ts`, `src/api/group-owner.ts`
-- **Symptom:** Both endpoints accept a bare wallet address as the identity claim with no cryptographic proof. Anyone who knows a wallet address can read that wallet's campaign or group data.
-- **Risk level:** Information disclosure only — no funds at risk. Read-only endpoints.
-- **Fix:** Standard wallet signature flow — server issues a nonce, client signs it with their wallet, server verifies signature matches the claimed address. Implement before public rollout when real advertiser data is in the system.
+**Read endpoints trust bare wallet strings — ✅ RESOLVED (July 4, commit `8956c82`)**
+- Fixed via signed-message auth: caller signs `Canvas auth: <epoch-ms>` with the queried wallet, verified server-side through viem's public-client `verifyMessage` (EOA + Coinbase smart wallet support), 5-minute replay window. See the July 4 third-batch changelog entry. Frontend follow-up tracked under "Mateo — Fix before approaching advertisers" → "Dashboards need a connect-wallet-and-sign step".
 
 ---
 

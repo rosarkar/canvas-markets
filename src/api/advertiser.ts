@@ -1,12 +1,13 @@
 import { Router, type Request, type Response } from "express";
 
 import { getCampaignsForWallet, getAdvertiserByWallet } from "@/adapters/advertisers.adapter.js";
+import { requireWalletAuth } from "@/api/wallet-auth.js";
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/i;
 
 export const advertiserRouter = Router();
 
-advertiserRouter.get("/api/advertiser", async (req: Request, res: Response) => {
+advertiserRouter.get("/api/advertiser", requireWalletAuth, async (req: Request, res: Response) => {
   const wallet = req.query.wallet as string | undefined;
 
   if (!wallet || !WALLET_RE.test(wallet)) {

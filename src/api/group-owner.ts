@@ -1,12 +1,13 @@
 import { Router, type Request, type Response } from "express";
 
 import { getGroupOwnerStats } from "@/adapters/groups.adapter.js";
+import { requireWalletAuth } from "@/api/wallet-auth.js";
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/i;
 
 export const groupOwnerRouter = Router();
 
-groupOwnerRouter.get("/api/group-owner", async (req: Request, res: Response) => {
+groupOwnerRouter.get("/api/group-owner", requireWalletAuth, async (req: Request, res: Response) => {
   const wallet = req.query.wallet as string | undefined;
 
   if (!wallet || !WALLET_RE.test(wallet)) {

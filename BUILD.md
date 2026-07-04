@@ -1,5 +1,5 @@
 # Canvas Protocol — Build Log
-**Last updated:** July 2, 2026  
+**Last updated:** July 4, 2026  
 **Repo:** `fweekshow/canvas-ai` · **Branch:** `main`  
 **Infrastructure:** Railway (canvas-ai + Postgres) · Base mainnet · `@CanvasProtocolBot`  
 **Smart contract:** `CanvasEscrowV0.sol` at `0x262ac1a082fd32c83e9b32ff1912ea070ed55890`
@@ -7,6 +7,27 @@
 ---
 
 ## Changelog
+
+### July 4, 2026 (session fixes, commits 88c838b → 950de19)
+
+A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixed via Claude Code and pushed to main in two commits:
+
+- `88c838b` — fix: compare-and-swap state transitions, payout batch fee leg separation, stuck-state comment for Mateo (Fixes 1, 3, 5)
+- `950de19` — fix: scoring prompt injection and fail-closed, deposit monitor chunking, refund reroute away from contract (Fixes 2, 4, 6)
+
+**Fix 1 (`verification.adapter.ts`):** `transitionState` now takes an optional `expectedState` and returns true/false. All three entry paths that reach payout accrual (DM text replies, Mini App completions, captcha button taps) now bail if 0 rows update — closes the double-payout race condition.
+
+**Fix 2 (`scoring.ts`):** User response wrapped in `<user_response>` delimiters in the Kimi prompt to block prompt injection. Keyword fallback switched from substring to word-boundary regex. Dead `hits` variable removed. Kimi errors and unparseable JSON now fail closed for advertiser-funded verifications instead of falling through to the weak keyword fallback. Missing API key case left on keyword fallback deliberately (no-Kimi config mode).
+
+**Fix 3 (`payout-batch.ts` + schema):** Added `fee_status` and `fee_tx_hash` columns via `ADD COLUMN IF NOT EXISTS` boot migration. Fee leg now writes only to its own columns; owner leg writes only to `payout_status`/`payout_tx_hash`. Balance check now covers owner + fee combined before either leg fires.
+
+**Fix 4 (`deposit-monitor.ts`):** `getContractEvents` now chunks to 2,000 blocks per poll iteration, advancing the cursor per chunk. Prevents permanent wedge after extended downtime.
+
+**Fix 5 (`process-text-response.ts`):** TODO comment added for Mateo at the SCORING transition point — TTL recovery sweep must cover `SCORING` and `RESPONSE_RECEIVED`, not just `DEEP_LINK_SENT` and `TASK_SENT`.
+
+**Fix 6 (`campaigns.ts`):** Refund flow rerouted from `refundUnusedBudget` to `releasePayout(campaignId, advertiserWallet, amount)` using the advertiser wallet from DB. TODO comment added for Mateo flagging the `campaignDepositor` overwrite in `CanvasEscrowV0.sol` as a theft vector for V1.
+
+---
 
 ### July 2, 2026 (evening)
 
@@ -166,7 +187,21 @@
 
 ---
 
+**TTL recovery sweep must also cover `SCORING` and `RESPONSE_RECEIVED`**
+- **File:** `src/telegram/services/process-text-response.ts` — see the TODO comment at the SCORING transition in `finalize()`
+- **Root cause:** Same class as the stuck `PASSED` issue above. If `api.getChat()` or `api.getMe()` throws mid-finalize, the row is stranded in `SCORING` — not in the TTL sweep (which only covers `DEEP_LINK_SENT` and `TASK_SENT`) and not terminal, so the user is muted forever with no retry path.
+- **Fix:** When building the recovery sweep, cover `SCORING` and `RESPONSE_RECEIVED` states in addition to `DEEP_LINK_SENT` and `TASK_SENT`.
+
+---
+
 ### Mateo — Fix before approaching advertisers
+
+**`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector**
+- **File:** `contracts/CanvasEscrowV0.sol` — `depositBudget` is permissionless and overwrites the refund recipient (`campaignDepositor[campaignId]`) on every call. An attacker can deposit dust to any funded campaign and become the refund recipient.
+- **Fix:** Needs `if (campaignDepositor[id] == address(0))` guard or an explicit refund address param in V1 before audit.
+- **Status:** Application-layer workaround is in place — withdraw refunds route through `releasePayout` to the advertiser's DB wallet record instead of `refundUnusedBudget` (see TODO comment in `src/telegram/handlers/campaigns.ts`).
+
+---
 
 **Basescan contract verification**
 - **Command:** `forge verify-contract 0x262ac1a082fd32c83e9b32ff1912ea070ed55890 CanvasEscrowV0 --chain base --etherscan-api-key $BASESCAN_API_KEY`
@@ -229,6 +264,27 @@
 - **Symptom:** Both endpoints accept a bare wallet address as the identity claim with no cryptographic proof. Anyone who knows a wallet address can read that wallet's campaign or group data.
 - **Risk level:** Information disclosure only — no funds at risk. Read-only endpoints.
 - **Fix:** Standard wallet signature flow — server issues a nonce, client signs it with their wallet, server verifies signature matches the claimed address. Implement before public rollout when real advertiser data is in the system.
+
+---
+
+**Kimi outage now fails advertiser-funded verifications closed**
+- **File:** `src/services/scoring.ts` (July 4 Fix 2)
+- **Symptom:** During a Kimi outage, advertiser-funded verifications fail closed — genuine users caught in an outage will hit the 24-hour cooldown.
+- **Fix:** A scoring-retry queue is the Phase 2 fix.
+
+---
+
+**Withdraw dead-ends for advertisers with no linked wallet**
+- **File:** `src/telegram/handlers/campaigns.ts` (July 4 Fix 6)
+- **Symptom:** Advertisers with no wallet linked in the `advertisers` table will hit a "contact support" dead end on withdraw rather than falling back to `refundUnusedBudget` (deliberate — the fallback is the theft vector).
+- **Action:** Verify all active advertisers have a linked wallet before live advertiser campaigns go out.
+
+---
+
+**`FOR UPDATE SKIP LOCKED` in payout-batch is a no-op**
+- **File:** `src/services/payout-batch.ts`
+- **Symptom:** The clause runs without a `BEGIN` block, so row locks release as each statement autocommits — the advisory lock is what's actually protecting concurrency.
+- **Fix:** Worth fixing in a future cleanup pass (wrap in a real transaction or drop the misleading clause).
 
 ---
 

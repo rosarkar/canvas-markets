@@ -8,6 +8,14 @@
 
 ## Changelog
 
+### July 4, 2026 — second batch (commits 9494135 → 3ae77d9 → 915e475)
+
+- `9494135` — **npm audit fix:** `ws` moved to 8.21.0, `viem` to 2.54.3, 0 production vulnerabilities. Low-severity esbuild advisory remains in dev dependencies only (Windows-only, does not ship to Railway).
+- `3ae77d9` — **`registered_at` migration:** `ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP` added to boot migration block in `schema.ts`. Existing rows backfilled with migration timestamp, not true registration dates. New registrations get accurate timestamps from here.
+- `915e475` — **`FOR UPDATE SKIP LOCKED` fix:** payout batch now uses a claim pattern — explicit transaction wraps the SELECT + claim UPDATE to `processing`, commits before on-chain transfers. Per-leg status writes stay individually committed. Crash strands rows in `processing` (unpaid, never double-paid). Per-leg "set processing" UPDATE removed. SELECT uses `FOR UPDATE OF v` to lock only verification rows, not joined `groups` rows.
+
+---
+
 ### July 4, 2026 (session fixes, commits 88c838b → 950de19)
 
 A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixed via Claude Code and pushed to main in two commits:
@@ -194,6 +202,13 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
+**Stuck-`processing` payout recovery sweep — priority raised (July 4, commit `915e475`)**
+- **File:** `src/services/payout-batch.ts`
+- **Why priority went up:** The claim-pattern fix means every crash mid-batch (e.g. a Railway deploy during a payout run) now reliably lands rows in `payout_status = 'processing'` by design — unpaid, never double-paid. Nothing currently retries them; the batch query only picks up `'pending'` rows.
+- **Fix:** Recovery sweep for rows stuck in `'processing'` older than some window — verify against `payout_tx_hash` (null = transfer never fired, safe to reset to `'pending'`).
+
+---
+
 ### Mateo — Fix before approaching advertisers
 
 **`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector**
@@ -281,10 +296,8 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
-**`FOR UPDATE SKIP LOCKED` in payout-batch is a no-op**
-- **File:** `src/services/payout-batch.ts`
-- **Symptom:** The clause runs without a `BEGIN` block, so row locks release as each statement autocommits — the advisory lock is what's actually protecting concurrency.
-- **Fix:** Worth fixing in a future cleanup pass (wrap in a real transaction or drop the misleading clause).
+**`FOR UPDATE SKIP LOCKED` in payout-batch is a no-op — ✅ RESOLVED (July 4, commit `915e475`)**
+- Fixed via claim pattern: explicit transaction wraps the SELECT + claim UPDATE to `processing`, committing before on-chain transfers so a crash can never roll paid rows back to `pending`. See the July 4 second-batch changelog entry.
 
 ---
 

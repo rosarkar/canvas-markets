@@ -50,8 +50,8 @@ async function isUserGroupAdmin(
 }
 
 async function isBotGroupAdmin(bot: Bot, chatId: number): Promise<boolean> {
-  const me = await bot.api.getMe();
-  const member = await bot.api.getChatMember(chatId, me.id);
+  // bot.botInfo is cached by grammY at startup — no getMe round trip needed.
+  const member = await bot.api.getChatMember(chatId, bot.botInfo.id);
   return member.status === "administrator";
 }
 
@@ -330,13 +330,7 @@ export function registerRegisterHandler(bot: Bot): void {
 
       const groupNeedingRules = ownerGroups.find((g) => g.rules.length === 0);
       if (groupNeedingRules) {
-        let groupTitle = groupNeedingRules.groupTitle ?? "your group";
-        try {
-          const chat = await ctx.api.getChat(Number(groupNeedingRules.tgGroupId));
-          if (chat.type !== "private" && "title" in chat) groupTitle = chat.title ?? groupTitle;
-        } catch {
-          /* ignore */
-        }
+        const groupTitle = groupNeedingRules.groupTitle ?? "your group";
         await maybeSendRulesPrompt(bot, fromId, groupNeedingRules, groupTitle);
       }
       return;

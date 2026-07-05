@@ -20,6 +20,7 @@ import {
   isThinResponse,
 } from "@/services/text-response-parser.js";
 import { VerificationState } from "@/services/verification-states.js";
+import { getBot } from "@/telegram/bot.js";
 import {
   completeVerificationFail,
   completeVerificationPass,
@@ -71,9 +72,9 @@ async function finalize(
   if (!claimed) return { outcome: "already_processed" };
 
   // TODO for Mateo: the TTL recovery sweep must cover SCORING and RESPONSE_RECEIVED
-  // states, not just DEEP_LINK_SENT and TASK_SENT. If api.getChat() or api.getMe()
-  // throws here, the row is stranded in SCORING and the user is muted forever with
-  // no retry path.
+  // states, not just DEEP_LINK_SENT and TASK_SENT. If anything below throws (Kimi,
+  // the DB, a Telegram send), the row is stranded in SCORING and the user is muted
+  // forever with no retry path.
   await transitionState(verification.verificationId, VerificationState.SCORING, {
     expectedState: VerificationState.RESPONSE_RECEIVED,
   });
@@ -90,11 +91,10 @@ async function finalize(
 
   const group = await getGroupById(verification.groupId);
   if (!group) throw new Error("Group not found");
-  const chat = await api.getChat(Number(group.tgGroupId));
-  const groupTitle =
-    chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
-  const me = await api.getMe();
-  const botUsername = me.username ?? "CanvasProtocolBot";
+  // No Telegram round trips here: title comes from the group row, username from
+  // grammY's startup cache.
+  const groupTitle = group.groupTitle ?? "the group";
+  const botUsername = getBot().botInfo.username;
 
   if (passed) {
     const marked = await transitionState(verification.verificationId, VerificationState.PASSED, {

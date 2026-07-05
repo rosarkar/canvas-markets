@@ -99,9 +99,7 @@ async function handleDmTextResponse(
   const group = await getGroupById(verification.groupId);
   if (!group) return false;
 
-  const chat = await ctx.api.getChat(Number(group.tgGroupId));
-  const groupTitle =
-    chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
+  const groupTitle = group.groupTitle ?? "the group";
 
   const result = await processTextVerificationResponse(ctx.api, verification, text);
 
@@ -130,6 +128,7 @@ async function handleDmTextResponse(
 
 async function handleWebAppData(ctx: {
   from: { id: number };
+  me: { username?: string };
   message: { web_app_data?: { data: string } };
   api: import("grammy").Bot["api"];
   reply: (text: string, extra?: object) => Promise<unknown>;
@@ -160,11 +159,9 @@ async function handleWebAppData(ctx: {
   });
   if (!claimed) return true;
 
-  const chat = await ctx.api.getChat(Number(group.tgGroupId));
-  const groupTitle =
-    chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
-  const me = await ctx.api.getMe();
-  const botUsername = me.username ?? "CanvasProtocolBot";
+  // No Telegram round trips: title from the group row, username from ctx.me (cached).
+  const groupTitle = group.groupTitle ?? "the group";
+  const botUsername = ctx.me.username ?? "CanvasProtocolBot";
 
   const marked = await transitionState(verification.verificationId, VerificationState.PASSED, {
     expectedState: VerificationState.RESPONSE_RECEIVED,

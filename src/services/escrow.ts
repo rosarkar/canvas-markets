@@ -247,27 +247,10 @@ export async function creditDirectDeposit(
   }
 }
 
-export async function refundUnusedBudget(
-  campaignId: number,
-  amountMicro: bigint,
-): Promise<string | null> {
-  const ctx = getRelayerWalletClient();
-  if (!ctx) return null;
-
-  try {
-    const txHash = await ctx.client.writeContract({
-      address: ctx.escrowAddress,
-      abi: CANVAS_ESCROW_ABI,
-      functionName: "refundUnusedBudget",
-      args: [BigInt(campaignId), amountMicro],
-    });
-    logger.info({ campaignId, amountMicro: amountMicro.toString(), txHash }, "Campaign budget refunded");
-    return txHash;
-  } catch (err) {
-    logger.error({ campaignId, err }, "refundUnusedBudget failed");
-    return null;
-  }
-}
+// refundUnusedBudget was deliberately removed: the on-chain function pays whoever last
+// touched campaignDepositor, which any address can overwrite via depositBudget (theft
+// vector — see BUILD.md). Refunds go through releaseEscrowPayout to the advertiser's
+// DB wallet record instead. Do not re-add until the V1 contract fixes the overwrite.
 
 export async function readCampaignBalance(campaignId: number): Promise<bigint> {
   const ctx = getRelayerWalletClient();

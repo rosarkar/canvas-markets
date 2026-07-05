@@ -100,11 +100,9 @@ export function registerCaptchaCallbackHandler(bot: Bot): void {
     const messageId = ctx.callbackQuery.message?.message_id;
     const dmChatId = ctx.callbackQuery.message?.chat.id;
 
-    const chat = await ctx.api.getChat(Number(group.tgGroupId));
-    const groupTitle =
-      chat.type !== "private" && "title" in chat ? (chat.title ?? "the group") : "the group";
-    const me = await ctx.api.getMe();
-    const botUsername = me.username ?? "CanvasProtocolBot";
+    // No Telegram round trips: title from the group row, username from ctx.me (cached).
+    const groupTitle = group.groupTitle ?? "the group";
+    const botUsername = ctx.me.username;
 
     if (isCorrect) {
       await transitionState(verificationId, VerificationState.PASSED);

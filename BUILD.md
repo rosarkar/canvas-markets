@@ -462,3 +462,5 @@ Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live reve
 ---
 
 *Canvas Protocol · BUILD.md · confidential*
+
+<!-- deploy test -->

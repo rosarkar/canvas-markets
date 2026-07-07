@@ -1,12 +1,32 @@
 # Canvas Protocol — Build Log
-**Last updated:** July 4, 2026  
-**Repo:** `fweekshow/canvas-ai` · **Branch:** `main`  
-**Infrastructure:** Railway (canvas-ai + Postgres) · Base mainnet · `@CanvasProtocolBot`  
-**Smart contract:** `CanvasEscrowV0.sol` at `0x262ac1a082fd32c83e9b32ff1912ea070ed55890`
+**Last updated:** July 7, 2026  
+**Repo:** `rosarkar/canvas-ai` · **Branch:** `main` (auto-deploys to Railway)  
+**Infrastructure:** Railway — Rohit's workspace (canvas-ai + Postgres, `canvas-ai-production-eae7.up.railway.app`) · Base mainnet · `@CanvasProtocolBot`  
+**Smart contract:** `CanvasEscrowV0.sol` at `0x13aA343c3CEC62FA6ef9c454761Fb54eeE77561B` (verified on Basescan; relayer `0xbD5f…56d9`)  
+**Deprecated:** `fweekshow/canvas-ai` repo, Mateo's-workspace Railway (suspended), old escrow `0x262a…5890` (partial bytecode, 0 balance)
 
 ---
 
 ## Changelog
+
+### July 5–7, 2026 — deployment cutover, escrow redeploy, pending-items marathon
+
+**Infrastructure cutover (July 5):**
+- Repo moved to `rosarkar/canvas-ai` (standalone private repo, full history — not a GitHub fork, so it survives independently of the old repo). New Railway project in Rohit's workspace with its own Postgres; data migrated via `pg_dump --clean`; webhook cut over to `canvas-ai-production-eae7.up.railway.app`. Old service suspended, not deleted.
+- All secrets rotated: `TELEGRAM_WEBHOOK_SECRET`, `DEPOSIT_URL_SECRET`, and the escrow relayer — `setRelayer` executed on-chain (tx `0x8f1401ef…c5620`), relayer is now `0xbD5f…56d9`, held only in the new Railway env. Bot token regen in BotFather still pending.
+
+**Escrow redeploy (July 7, commit `634f654`):**
+- Discovered the old deployed contract at `0x262a…5890` was a *partial* build — `creditDirectDeposit`, `totalHeld`, and `withdrawUnallocated` don't exist in its bytecode, so every Base Pay deposit would have been permanently stranded (uncreditable, unrecoverable). Base Pay UI was disabled (`ef30ea3`) until the fix.
+- Full 7-function `CanvasEscrowV0.sol` deployed to `0x13aA343c3CEC62FA6ef9c454761Fb54eeE77561B` with relayer `0xbD5f…56d9` from block one. Verified on Basescan. `ESCROW_CONTRACT_ADDRESS` updated; Base Pay re-enabled.
+- All pre-existing test campaigns marked `exhausted` (no on-chain backing on the new contract; no real funds involved).
+
+**Pending-items marathon (July 7, commits `1a41b10` → `e7449c7`):**
+- `1a41b10` — **Recovery sweeps + COOP header:** stuck-`PASSED` sweep (re-attempts rules DM after 2 min, `RULES_TIMED_OUT` on second failure); TTL sweep extended to `SCORING`/`RESPONSE_RECEIVED`; stuck-`processing` payout sweep (null `payout_tx_hash` → reset to `pending`, non-null → admin alert for manual review); `Cross-Origin-Opener-Policy: same-origin-allow-popups` on payment pages so Coinbase smart wallet works in Telegram's in-app browser.
+- `6ccc5c9` — **Dashboard sign-in, `/api/groups`, persistent sessions:** both dashboards now connect-and-sign (`Canvas auth: <ts>` via Coinbase SDK) instead of pasting a wallet; new `/api/groups` endpoint (title, member count, top bid) feeds the Available Groups tab; dual-identity sessions persist in a new `user_sessions` table with write-through cache — Railway deploys no longer log users out mid-flow.
+- `3a475f7` — **Group owner accept/decline gate:** funded campaigns land in `pending_approval`; owner gets an Accept/Decline DM; decline refunds the advertiser via `releasePayout` to their DB wallet; 48h auto-accept sweep; advertisers can withdraw while pending.
+- `e7449c7` — **`campaignDepositor` dust-hijack fix (source only, NOT deployed):** first-depositor-wins guard in `depositBudget` and `creditDirectDeposit` + 3 Foundry regression tests (7/7 passing). The live contract at `0x13aA…561B` still has the overwrite — mitigated by the app-layer refund routing — until the next contract deploy.
+
+---
 
 ### July 4, 2026 — third batch (commits 3c55f56 → 8956c82)
 
@@ -180,83 +200,51 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ### Mateo — Fix immediately (blocks live testing)
 
-**`registered_at` not written on group insert**
-- **File:** `src/adapters/schema.ts`
-- **Root cause:** The `registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP` column is defined inside the `CREATE TABLE IF NOT EXISTS groups` block, but Postgres skips that entire block because the table already exists. The column was never added to the live database. Every row in the `groups` table has null `registered_at`.
-- **Current behaviour:** Group picker ordering works by coincidence — the query falls back to `group_id ASC` which happens to be chronological. Not reliable long-term.
-- **Fix:** Run this migration against the live Railway Postgres, then add it to the schema init so it runs on future deploys:
-  ```sql
-  ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
-  ```
-- **Also:** In `src/adapters/groups.adapter.ts`, the `registerGroup` INSERT omits `registered_at` from the column list. After the migration, new rows will pick up the DB-level default, but confirm this is intentional rather than adding an explicit value.
+**`registered_at` not written on group insert — ✅ RESOLVED (July 4, commit `3ae77d9`)**
+- Boot migration added; existing rows backfilled with migration timestamp, new rows get accurate defaults.
 
 ---
 
-**Stuck `PASSED` state**
-- **Files:** `src/telegram/services/process-text-response.ts` (the `completeVerificationPass` function), `src/index.ts` (the 60s TTL loop)
-- **Root cause:** The verification flow transitions `PASSED → RULES_PENDING` by calling `sendAdmissionRulesDm`. If that Telegram API call throws mid-flight (network error, Telegram outage, rate limit), the row stays in `PASSED` permanently. `getActiveVerificationForUser` in `src/adapters/verification.adapter.ts` excludes `PASSED` from its active set, so the user is muted forever and a duplicate verification can start.
-- **Fix:** In `src/index.ts`, add a recovery sweep inside the existing 60s `setInterval` alongside the `RULES_PENDING` sweep:
-  1. Find any verification in `PASSED` state where `updated_at < NOW() - INTERVAL '2 minutes'`
-  2. Re-attempt `sendAdmissionRulesDm` for each
-  3. If it fails again, transition to `RULES_TIMED_OUT` and leave user muted — do not call unmute
+**Stuck `PASSED` state — ✅ RESOLVED (July 7, commit `1a41b10`)**
+- Recovery sweep in the 60s loop re-attempts `sendAdmissionRulesDm` for rows in `PASSED` > 2 min; second failure → `RULES_TIMED_OUT`, user left muted.
 
 ---
 
-**TTL recovery sweep must also cover `SCORING` and `RESPONSE_RECEIVED`**
-- **File:** `src/telegram/services/process-text-response.ts` — see the TODO comment at the SCORING transition in `finalize()`
-- **Root cause:** Same class as the stuck `PASSED` issue above. If `api.getChat()` or `api.getMe()` throws mid-finalize, the row is stranded in `SCORING` — not in the TTL sweep (which only covers `DEEP_LINK_SENT` and `TASK_SENT`) and not terminal, so the user is muted forever with no retry path.
-- **Fix:** When building the recovery sweep, cover `SCORING` and `RESPONSE_RECEIVED` states in addition to `DEEP_LINK_SENT` and `TASK_SENT`.
+**TTL recovery sweep must also cover `SCORING` and `RESPONSE_RECEIVED` — ✅ RESOLVED (July 7, commit `1a41b10`)**
+- Sweep now covers both states in addition to `DEEP_LINK_SENT`/`TASK_SENT`. (The `getMe`/`getChat` calls that stranded rows here were also removed from the hot path in `dc9e91a`.)
 
 ---
 
-**Stuck-`processing` payout recovery sweep — priority raised (July 4, commit `915e475`)**
-- **File:** `src/services/payout-batch.ts`
-- **Why priority went up:** The claim-pattern fix means every crash mid-batch (e.g. a Railway deploy during a payout run) now reliably lands rows in `payout_status = 'processing'` by design — unpaid, never double-paid. Nothing currently retries them; the batch query only picks up `'pending'` rows.
-- **Fix:** Recovery sweep for rows stuck in `'processing'` older than some window — verify against `payout_tx_hash` (null = transfer never fired, safe to reset to `'pending'`).
+**Stuck-`processing` payout recovery sweep — ✅ RESOLVED (July 7, commit `1a41b10`)**
+- Sweep resets stuck `processing` rows with null `payout_tx_hash` to `pending` (transfer never fired); non-null hashes trigger an admin alert for manual review instead of auto-retry.
 
 ---
 
 ### Mateo — Fix before approaching advertisers
 
-**Dashboards need a connect-wallet-and-sign step (July 4, commit `8956c82`)**
-- **Files:** `public/advertiser/index.html` (fetch at ~line 320), `public/group-owner/index.html` (fetch at ~line 281)
-- **Symptom:** Both dashboards still fetch with a bare pasted wallet address. Now that `/api/advertiser` and `/api/group-owner` require a signature, the dashboards get 401s and show their empty/error states — no real data until fixed.
-- **Fix:** Add a connect-wallet flow (Coinbase smart wallet SDK is already used on the deposit page) that signs `Canvas auth: <Date.now()>` and passes `ts` + `sig` alongside `wallet` on the fetch. The 401 response body echoes the exact message format expected.
+**Dashboards need a connect-wallet-and-sign step — ✅ RESOLVED (July 7, commit `6ccc5c9`)**
+- Both dashboards now connect the Coinbase smart wallet and sign `Canvas auth: <ts>`; signature cached in sessionStorage for the 5-min window.
 
 ---
 
-**`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector**
-- **File:** `contracts/CanvasEscrowV0.sol` — `depositBudget` is permissionless and overwrites the refund recipient (`campaignDepositor[campaignId]`) on every call. An attacker can deposit dust to any funded campaign and become the refund recipient.
-- **Fix:** Needs `if (campaignDepositor[id] == address(0))` guard or an explicit refund address param in V1 before audit.
-- **Status:** Application-layer workaround is in place — withdraw refunds route through `releasePayout` to the advertiser's DB wallet record instead of `refundUnusedBudget` (see TODO comment in `src/telegram/handlers/campaigns.ts`).
+**`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector — 🔶 SOURCE FIXED, DEPLOY PENDING (July 7, commit `e7449c7`)**
+- First-depositor-wins guard added to `depositBudget` and `creditDirectDeposit` in source, with 3 Foundry regression tests (dust-deposit hijack now fails; top-ups still accumulate). 7/7 tests pass.
+- **The live contract at `0x13aA…561B` still has the overwrite.** Mitigated by the app-layer refund routing (`releasePayout` to DB wallet; `refundUnusedBudget` unused). Deploy the fixed contract with the next escrow migration — bundle with any other V1 changes (explicit refund-address param, audit prep) to pay the address-cutover cost once.
 
 ---
 
-**Basescan contract verification**
-- **Command:** `forge verify-contract 0x262ac1a082fd32c83e9b32ff1912ea070ed55890 CanvasEscrowV0 --chain base --etherscan-api-key $BASESCAN_API_KEY`
-- **Why it matters:** Bankr integration requires a verified contract. Unverified contracts show as bytecode on Basescan — advertisers and partners can't inspect what they're depositing into.
-- **Note:** Contract is currently marked test-only in NatSpec. Confirm NatSpec comments are updated before verifying publicly.
+**Basescan contract verification — ✅ RESOLVED for the live contract (July 7)**
+- `0x13aA…561B` verified on Basescan (source + constructor args visible). The deprecated `0x262a…5890` was left unverified — its deployed bytecode doesn't match any source in the repo (partial build) and it holds no funds.
 
 ---
 
-**Coinbase smart wallet fails in Telegram in-app browser**
-- **Where it fails:** The payment page at `canvas-ai-production.up.railway.app` served when an advertiser taps the funding link in Telegram
-- **Error:** "This app doesn't support smart wallets / window.opener is inaccessible" from `keys.coinbase.com`
-- **Root cause:** Telegram's in-app browser sets `Cross-Origin-Opener-Policy: same-origin` which blocks `window.opener`. The Coinbase smart wallet SDK requires `window.opener` to complete its OAuth-style connection flow.
-- **Workaround confirmed:** Opening the link in an external browser works — Campaign #9 escrow write succeeded, no funds at risk.
-- **Fix option 1 (recommended):** Add this response header to the payment page server response:
-  ```
-  Cross-Origin-Opener-Policy: same-origin-allow-popups
-  ```
-- **Fix option 2:** Append `?startapp` to the Telegram link or restructure as a `t.me` deep link so Telegram opens it in an external browser automatically.
+**Coinbase smart wallet fails in Telegram in-app browser — ✅ RESOLVED (July 7, commit `1a41b10`)**
+- `Cross-Origin-Opener-Policy: same-origin-allow-popups` header added to the payment page responses (fix option 1).
 
 ---
 
-**Advertiser accept/decline layer for group owners**
-- **What it is:** Before a campaign goes live in a group, the group owner should be able to approve or reject the advertiser. Currently any funded campaign immediately becomes active.
-- **Proposed flow:** When an advertiser funds a campaign targeting a group, bot DMs the group owner: "New campaign request from [advertiser name] — $X/verification, [task preview]. Accept or Decline?" Inline buttons. If declined, escrow refunded to advertiser. If no response within 48 hours, auto-accept.
-- **DB change needed:** Add `status` column to `advertiser_budgets` table: `pending | active | declined`. Payout batch and verification flow must check `status = 'active'` before serving tasks.
-- **Bid ladder note:** When top bidder's budget runs out, the next bidder in the ladder should auto-promote to active rather than requiring a new accept — group owner already approved that advertiser category implicitly.
+**Advertiser accept/decline layer for group owners — ✅ RESOLVED (July 7, commit `3a475f7`)**
+- Funded campaigns land in `pending_approval`; owner gets Accept/Decline DM with task preview; decline refunds via `releasePayout` to the advertiser's DB wallet; 48h auto-accept sweep in the 60s loop; advertisers can withdraw while pending. Bid-ladder auto-promote note retained for Phase 2.
 
 ---
 
@@ -268,23 +256,15 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
-**`/api/groups` endpoint**
-- **What it is:** A read endpoint that returns the list of registered groups with member count, topic, and current top bid — needed by the advertiser dashboard's Available Groups tab.
-- **Current state:** Endpoint does not exist. The advertiser dashboard UI gracefully shows an empty state when it 404s.
-- **Shape needed:**
-  ```json
-  [{ "tg_group_id": -5501340634, "group_title": "Canvas / Bankr", "topic": "...", "member_count": 0, "top_bid": 0.35 }]
-  ```
-- **Auth:** Same bare wallet pattern as other read endpoints for now — add signature verification before public rollout.
+**`/api/groups` endpoint — ✅ RESOLVED (July 7, commit `6ccc5c9`)**
+- Live at `/api/groups`: group title, member count, top bid per registered active group. Public read (group directory is non-sensitive marketplace data — no per-wallet information).
 
 ---
 
 ### Known — Deferred (not blocking)
 
-**Dual-identity session clears on bot restart**
-- **Files:** `src/telegram/handlers/menu.ts` and `src/telegram/handlers/start.ts` — session stored in a `Map<number, { mode, activeTgGroupId? }>` in-memory
-- **Symptom:** Railway auto-deploys on every push to main, which restarts the bot process and clears all sessions. Users who were mid-flow hit `/start` again to restore context.
-- **Fix:** Persist session to a `user_sessions` table in Postgres or a Redis key with TTL. Deferred until session loss becomes a user complaint.
+**Dual-identity session clears on bot restart — ✅ RESOLVED (July 7, commit `6ccc5c9`)**
+- Sessions persist in a `user_sessions` table (write-through in-memory cache; DB blips degrade to old restart behavior). Deploys no longer log users out mid-flow.
 
 ---
 
@@ -453,7 +433,8 @@ Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live reve
 - `COMPANY_WALLET=0x199390C2C6Af11b8938c6fCd86208b370D43C61F`
 
 ### Key IDs
-- Railway project: `bef22e72-bab1-4682-8495-c534cddedf45`
+- Railway project (live, Rohit's workspace): `30c2e333-d2ac-40dc-b722-70c7209170c6`
+- Railway project (deprecated, Mateo's workspace, suspended): `bef22e72-bab1-4682-8495-c534cddedf45`
 - Canvas Test group: `tg_group_id -5145298837`
 - Canvas / Bankr group: `tg_group_id -5501340634` (group_id 14, active)
 - Bot: `@CanvasProtocolBot`
@@ -462,5 +443,3 @@ Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live reve
 ---
 
 *Canvas Protocol · BUILD.md · confidential*
-
-<!-- deploy test -->

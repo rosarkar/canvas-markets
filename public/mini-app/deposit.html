@@ -30,7 +30,12 @@
     <div class="muted">Campaign #<span id="campaign-id">—</span><span id="topup-label"></span></div>
     <div class="amount" id="amount-display">—</div>
     <p class="muted">One-tap pay with your Base Account. Gas sponsored.</p>
-    <button id="pay-btn" type="button">Pay with Base</button>
+    <button id="pay-btn" type="button" disabled>Pay with Base (temporarily unavailable)</button>
+    <div class="status err" style="display:block; margin-top:16px">
+      ⚠️ Base Pay deposits are temporarily disabled. Please fund your campaign by
+      <strong>direct deposit</strong> — return to Telegram and follow the direct deposit
+      instructions to send USDC into escrow. Reach out to the Canvas team if you need help.
+    </div>
     <div id="status" class="status" style="display:none"></div>
   </div>
 
@@ -46,6 +51,13 @@
 
     const statusEl = document.getElementById("status");
     const payBtn = document.getElementById("pay-btn");
+
+    // Base Pay deposits are disabled until the V1 escrow redeploy. The live contract
+    // lacks creditDirectDeposit/totalHeld, so a Base Pay transfer into escrow would be
+    // stranded (uncreditable and unrecoverable). Direct deposit (depositBudget) is the
+    // current method. The flow below is retained, not removed — flip BASE_PAY_ENABLED
+    // back to true once V1 ships with the crediting functions.
+    const BASE_PAY_ENABLED = false;
 
     function showStatus(msg, ok) {
       statusEl.style.display = "block";
@@ -107,6 +119,7 @@
     }
 
     payBtn.addEventListener("click", async () => {
+      if (!BASE_PAY_ENABLED) return;
       if (!campaignId || !amountMicro) return;
       payBtn.disabled = true;
       showStatus("Opening Base Pay…", true);

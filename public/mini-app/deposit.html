@@ -30,12 +30,7 @@
     <div class="muted">Campaign #<span id="campaign-id">—</span><span id="topup-label"></span></div>
     <div class="amount" id="amount-display">—</div>
     <p class="muted">One-tap pay with your Base Account. Gas sponsored.</p>
-    <button id="pay-btn" type="button" disabled>Pay with Base (temporarily unavailable)</button>
-    <div class="status err" style="display:block; margin-top:16px">
-      ⚠️ Base Pay deposits are temporarily disabled. Please fund your campaign by
-      <strong>direct deposit</strong> — return to Telegram and follow the direct deposit
-      instructions to send USDC into escrow. Reach out to the Canvas team if you need help.
-    </div>
+    <button id="pay-btn" type="button">Pay with Base</button>
     <div id="status" class="status" style="display:none"></div>
   </div>
 
@@ -52,12 +47,11 @@
     const statusEl = document.getElementById("status");
     const payBtn = document.getElementById("pay-btn");
 
-    // Base Pay deposits are disabled until the V1 escrow redeploy. The live contract
-    // lacks creditDirectDeposit/totalHeld, so a Base Pay transfer into escrow would be
-    // stranded (uncreditable and unrecoverable). Direct deposit (depositBudget) is the
-    // current method. The flow below is retained, not removed — flip BASE_PAY_ENABLED
-    // back to true once V1 ships with the crediting functions.
-    const BASE_PAY_ENABLED = false;
+    // Re-enabled 2026-07-07: escrow redeployed to 0x13aA343c3CEC62FA6ef9c454761Fb54eeE77561B
+    // with creditDirectDeposit/totalHeld/withdrawUnallocated live on-chain, so Base Pay
+    // transfers are creditable again. Keep this kill switch — flip to false if the
+    // crediting path ever breaks.
+    const BASE_PAY_ENABLED = true;
 
     function showStatus(msg, ok) {
       statusEl.style.display = "block";

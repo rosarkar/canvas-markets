@@ -9,6 +9,19 @@
 
 ## Changelog
 
+### July 7, 2026 — UX audit fixes (commits 6ca18bf → 8d4d791)
+
+A post-marathon audit of the seams between the day's new features surfaced four edge cases, all fixed and deployed:
+
+- `6ca18bf` — **Timeout copy contradiction:** timeout DMs invited an immediate retry that the cooldown + 12h attempt limit would silently reject. Both messages now state the real 24-hour wait.
+- `fad4324` — **Silent cooldown rejections:** all four rejection sites (both join entry paths × both reasons) now send a best-effort DM before the kick/decline — "you can try again in about N hours," computed from the last real attempt's terminal timestamp. DM failure never breaks the rejection.
+- `60f9e3b` — **Kimi exhaustion punished the user:** exhausted scoring retries no longer route through the failure path (kick + "wrong answer" copy + 24h cooldown). New terminal state `SCORING_UNAVAILABLE` — honest "technical issue on our side" DM, no cooldown, and exempt from the 12h attempt window so the user can retry the moment scoring recovers. Admin alert notes the user was not penalized.
+- `8d4d791` — **Withdraw stranded in-flight payouts:** `withdrawCampaign` now refuses (inside the withdraw transaction, after the row lock) while any verification sits in `BID_LOCK_STATES` against the campaign — draining escrow mid-verification left the group owner's payout to fail at the next batch. Advertiser sees "N member(s) mid-verification — try again in a few minutes."
+
+State machine note: with `COOLDOWN_REJECTED` (rate-limit audit log) and `SCORING_UNAVAILABLE`, the verification state machine now has **17 states**; each new state's exemptions (cooldown, attempt window, sweeps) are documented at its definition in `verification-states.ts`.
+
+---
+
 ### July 7, 2026 — remaining open items closed (commits f02b19a → a2e6897)
 
 - `f02b19a` / `a2e6897` — **Verification rate limiting + rejection audit log:** one attempt per Telegram user **per group** per 12h, keyed `(tg_user_id, group_id)`, enforced at both join entry points after the active-verification resume check. Every turned-away join (24h failure cooldown or 12h attempt limit) now inserts a `COOLDOWN_REJECTED` row with `rejection_reason` (`group_cooldown_24h` | `attempt_limit_12h`) — invisible to sweeps/payouts, excluded from the window check so repeated knocking can't extend a lockout, and a ready-made signal source for Phase 2 abuse detection (per-group rejection pressure).

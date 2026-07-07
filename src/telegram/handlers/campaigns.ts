@@ -343,12 +343,11 @@ export function registerCampaignHandlers(bot: Bot): void {
 
     let refundNote = "";
     if (result.refundMicro > 0n) {
-      // TODO for Mateo: fix campaignDepositor overwrite in CanvasEscrowV0.sol V1 — any
-      // address can call depositBudget and overwrite the refund recipient. This
-      // application-layer workaround routes refunds through our DB wallet record
-      // (releasePayout to the advertiser's registered wallet, instead of
-      // refundUnusedBudget which pays whoever last touched campaignDepositor) until
-      // the contract is redeployed.
+      // Refunds route through our DB wallet record (releasePayout to the advertiser's
+      // registered wallet) by choice. The campaignDepositor overwrite that forced this
+      // was fixed on-chain (first-depositor guard, deployed 0xf808…101E), but DB-routed
+      // refunds remain the preferred path: destination stays under our control and the
+      // behavior is identical across contract versions.
       const advertiser = await getAdvertiserByTgId(BigInt(fromId));
       const refundWallet = advertiser?.walletAddress ?? null;
 

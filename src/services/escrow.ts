@@ -247,10 +247,11 @@ export async function creditDirectDeposit(
   }
 }
 
-// refundUnusedBudget was deliberately removed: the on-chain function pays whoever last
-// touched campaignDepositor, which any address can overwrite via depositBudget (theft
-// vector — see BUILD.md). Refunds go through releaseEscrowPayout to the advertiser's
-// DB wallet record instead. Do not re-add until the V1 contract fixes the overwrite.
+// refundUnusedBudget was deliberately removed when campaignDepositor was hijackable
+// (see BUILD.md). The deployed contract (0xf808…101E) now has the first-depositor
+// guard, so the function is safe — but refunds still go through releaseEscrowPayout
+// to the advertiser's DB wallet record: same behavior across contract versions and
+// the destination stays under our control. Re-add only with a concrete need.
 
 export async function readCampaignBalance(campaignId: number): Promise<bigint> {
   const ctx = getRelayerWalletClient();

@@ -2,8 +2,8 @@
 **Last updated:** July 7, 2026  
 **Repo:** `rosarkar/canvas-ai` · **Branch:** `main` (auto-deploys to Railway)  
 **Infrastructure:** Railway — Rohit's workspace (canvas-ai + Postgres, `canvas-ai-production-eae7.up.railway.app`) · Base mainnet · `@CanvasProtocolBot`  
-**Smart contract:** `CanvasEscrowV0.sol` at `0x13aA343c3CEC62FA6ef9c454761Fb54eeE77561B` (verified on Basescan; relayer `0xbD5f…56d9`)  
-**Deprecated:** `fweekshow/canvas-ai` repo, Mateo's-workspace Railway (suspended), old escrow `0x262a…5890` (partial bytecode, 0 balance)
+**Smart contract:** `CanvasEscrowV0.sol` at `0xf808b264E13Bf809C8e86afaF4e14c200931101E` (verified on Basescan; relayer `0xbD5f…56d9`; includes the first-depositor guard)  
+**Deprecated:** `fweekshow/canvas-ai` repo, Mateo's-workspace Railway (suspended), escrows `0x262a…5890` (partial bytecode) and `0x13aA…561B` (pre-guard, 0 balance)
 
 ---
 
@@ -248,9 +248,9 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
-**`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector — 🔶 SOURCE FIXED, DEPLOY PENDING (July 7, commit `e7449c7`)**
-- First-depositor-wins guard added to `depositBudget` and `creditDirectDeposit` in source, with 3 Foundry regression tests (dust-deposit hijack now fails; top-ups still accumulate). 7/7 tests pass.
-- **The live contract at `0x13aA…561B` still has the overwrite.** Mitigated by the app-layer refund routing (`releasePayout` to DB wallet; `refundUnusedBudget` unused). Deploy the fixed contract with the next escrow migration — bundle with any other V1 changes (explicit refund-address param, audit prep) to pay the address-cutover cost once.
+**`campaignDepositor` overwrite in `CanvasEscrowV0.sol` — refund theft vector — ✅ RESOLVED (July 7, guard deployed)**
+- First-depositor-wins guard (commit `e7449c7`, 7/7 Foundry tests) deployed to `0xf808b264E13Bf809C8e86afaF4e14c200931101E` (tx `0x1e0dee1b…1033e9`), verified on Basescan, relayer `0xbD5f…56d9` from block one. Pre-guard contract `0x13aA…561B` held 0 USDC at cutover — nothing migrated, left untouched.
+- App-layer refund routing (`releasePayout` to the DB wallet) is **retained by choice**: it works on both contracts and keeps refund destinations under DB control. `refundUnusedBudget` now pays the immutable first depositor if ever needed.
 
 ---
 

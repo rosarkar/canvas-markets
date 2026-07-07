@@ -21,6 +21,7 @@ import { registerAgentOfferSkipHandler } from "@/telegram/services/captcha-dm.js
 import { advertiserRouter } from "@/api/advertiser.js";
 import { depositRouter } from "@/api/deposit.js";
 import { groupOwnerRouter } from "@/api/group-owner.js";
+import { groupsRouter } from "@/api/groups.js";
 import { logger } from "@/utils/logger.js";
 
 let bot: Bot | null = null;
@@ -72,6 +73,7 @@ export function startTelegramBot(): void {
   app.use(advertiserRouter);
   app.use(depositRouter);
   app.use(groupOwnerRouter);
+  app.use(groupsRouter);
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "canvas-ai" });

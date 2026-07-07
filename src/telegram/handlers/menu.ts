@@ -12,6 +12,11 @@ import type { GroupRow } from "@/adapters/groups.adapter.js";
 import { hasAdvertiserActivity } from "@/adapters/advertisers.adapter.js";
 import { config } from "@/config/index.js";
 import { createPortalInviteLink } from "@/telegram/services/portal-invite.js";
+import {
+  clearSession,
+  getSession,
+  setSession,
+} from "@/telegram/services/session-store.js";
 import { startPendingRulesPrompt } from "@/telegram/handlers/register.js";
 import { fromMicroUnits } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
@@ -19,13 +24,9 @@ import { logger } from "@/utils/logger.js";
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const BACK_FOOTER = "\n\nType /start to return to the main menu.";
 
-type SessionState = { mode: "owner" | "advertiser"; activeTgGroupId?: bigint };
-
-/** Owner Tg IDs waiting for a new wallet address reply via the menu. */
+/** Owner Tg IDs waiting for a new wallet address reply via the menu.
+ *  Deliberately in-memory: it's a seconds-long prompt state, not identity context. */
 const pendingMenuWallet = new Map<number, true>();
-
-/** Per-user session state. mode: which identity is active; activeTgGroupId: selected group. */
-const sessionMode = new Map<number, SessionState>();
 
 // ─── keyboard builders ────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ export async function handlePendingMenuWalletReply(
     );
     return true;
   }
-  const session = sessionMode.get(ctx.from.id);
+  const session = await getSession(ctx.from.id);
   if (session?.activeTgGroupId) {
     await updateGroupWallet(session.activeTgGroupId, wallet.toLowerCase());
   } else {
@@ -126,7 +127,7 @@ export async function handleDmStart(
     api.sendMessage(fromId, text, (extra ?? {}) as Parameters<typeof api.sendMessage>[2]);
 
   if (isOwner && isAdvertiser) {
-    const session = sessionMode.get(fromId);
+    const session = await getSession(fromId);
     if (session?.mode === "owner") {
       await showOwnerScreenOrPicker(fromId, ownerGroups, true, send);
     } else if (session?.mode === "advertiser") {
@@ -159,24 +160,24 @@ async function showOwnerScreenOrPicker(
     await send("No registered groups found.");
     return;
   }
-  const session = sessionMode.get(fromId);
+  const session = await getSession(fromId);
   if (session?.activeTgGroupId) {
     // Already have a group selected — go straight to the menu
     await send("What would you like to do?", { reply_markup: buildOwnerMenuKeyboard(showSwitchMode) });
     return;
   }
   if (groups.length === 1) {
-    sessionMode.set(fromId, { mode: "owner", activeTgGroupId: groups[0]!.tgGroupId });
+    await setSession(fromId, { mode: "owner", activeTgGroupId: groups[0]!.tgGroupId });
     await send("What would you like to do?", { reply_markup: buildOwnerMenuKeyboard(showSwitchMode) });
     return;
   }
-  sessionMode.set(fromId, { mode: "owner" });
+  await setSession(fromId, { mode: "owner" });
   await send("Which group?\n\nType /start to return to the main menu.", { reply_markup: buildGroupPickerKeyboard(groups) });
 }
 
 /** Resolve the active group from session, or return null if not set. */
 async function resolveActiveGroup(fromId: number): Promise<GroupRow | null> {
-  const session = sessionMode.get(fromId);
+  const session = await getSession(fromId);
   if (!session?.activeTgGroupId) return null;
   return getGroupByTgId(session.activeTgGroupId);
 }
@@ -235,7 +236,7 @@ export function registerMenuHandler(bot: Bot): void {
         return;
       }
       const isAdvertiser = await hasAdvertiserActivity(BigInt(fromId));
-      sessionMode.set(fromId, { mode: "owner", activeTgGroupId: tgGroupId });
+      await setSession(fromId, { mode: "owner", activeTgGroupId: tgGroupId });
       await ctx.editMessageText("What would you like to do?", {
         reply_markup: buildOwnerMenuKeyboard(isAdvertiser),
       });
@@ -249,16 +250,16 @@ export function registerMenuHandler(bot: Bot): void {
           getGroupsByOwnerTgId(BigInt(fromId)),
           hasAdvertiserActivity(BigInt(fromId)),
         ]);
-        const session = sessionMode.get(fromId);
+        const session = await getSession(fromId);
         // Preserve activeTgGroupId if already set — user may be switching back to owner mode
-        sessionMode.set(fromId, { mode: "owner", activeTgGroupId: session?.activeTgGroupId });
+        await setSession(fromId, { mode: "owner", activeTgGroupId: session?.activeTgGroupId });
         const edit: Sender = (text, extra) => ctx.editMessageText(text, extra as Parameters<typeof ctx.editMessageText>[1]);
         await showOwnerScreenOrPicker(fromId, groups, isAdvertiser, edit);
         break;
       }
 
       case "mode:advertiser": {
-        sessionMode.set(fromId, { mode: "advertiser" });
+        await setSession(fromId, { mode: "advertiser" });
         await ctx.editMessageText(advertiserScreenText(), {
           parse_mode: "Markdown",
           reply_markup: buildAdvertiserKeyboard(true),
@@ -267,7 +268,7 @@ export function registerMenuHandler(bot: Bot): void {
       }
 
       case "menu:switch": {
-        sessionMode.delete(fromId);
+        await clearSession(fromId);
         await ctx.editMessageText("👋 Welcome back. What would you like to do?", {
           reply_markup: buildModeSelectorKeyboard(),
         });
@@ -279,15 +280,15 @@ export function registerMenuHandler(bot: Bot): void {
           getGroupsByOwnerTgId(BigInt(fromId)),
           hasAdvertiserActivity(BigInt(fromId)),
         ]);
-        const existing = sessionMode.get(fromId);
+        const existing = await getSession(fromId);
         // Clear activeTgGroupId so showOwnerScreenOrPicker always triggers picker / auto-select
-        sessionMode.set(fromId, { mode: existing?.mode ?? "owner" });
+        await setSession(fromId, { mode: existing?.mode ?? "owner" });
         if (groups.length === 0) {
           await ctx.editMessageText("No registered groups found.");
           break;
         }
         if (groups.length === 1) {
-          sessionMode.set(fromId, { mode: "owner", activeTgGroupId: groups[0]!.tgGroupId });
+          await setSession(fromId, { mode: "owner", activeTgGroupId: groups[0]!.tgGroupId });
           await ctx.editMessageText("What would you like to do?", {
             reply_markup: buildOwnerMenuKeyboard(isAdvertiser),
           });

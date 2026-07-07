@@ -164,6 +164,15 @@ export async function createCanvasTables(): Promise<void> {
         ON campaign_topups (advertiser_id, status) WHERE status = 'pending';
 
       ALTER TABLE payment_credits ADD COLUMN IF NOT EXISTS topup_id INT REFERENCES campaign_topups(topup_id);
+
+      -- Dual-identity session state, persisted so Railway deploys (process restarts)
+      -- stop logging users out of their flow mid-conversation.
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        tg_user_id          BIGINT PRIMARY KEY,
+        mode                TEXT NOT NULL CHECK (mode IN ('owner', 'advertiser')),
+        active_tg_group_id  BIGINT,
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
   } finally {
     client.release();

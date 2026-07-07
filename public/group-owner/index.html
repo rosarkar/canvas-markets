@@ -206,13 +206,13 @@
   <!-- Login -->
   <div id="login-view">
     <h1>Group Owner Dashboard</h1>
-    <p>Enter your Base payout wallet to view your groups and earnings.</p>
+    <p>Connect your Base payout wallet to view your groups and earnings.</p>
     <div class="input-row">
-      <input type="text" id="wallet-input" placeholder="0x..." autocomplete="off" spellcheck="false" />
-      <button id="login-btn" onclick="login()">View Dashboard</button>
+      <button id="login-btn" onclick="login()">Connect wallet</button>
     </div>
     <div id="error-msg" class="error-msg" style="display:none;"></div>
     <div class="help-text">
+      You'll be asked to sign a message (no transaction, no gas) to prove you own the wallet.<br />
       Set your wallet in the bot with <code>/wallet 0xYourAddress</code> after running <code>/register</code>.
     </div>
   </div>
@@ -250,38 +250,82 @@
 <script>
   const loginView = document.getElementById('login-view');
   const dashView = document.getElementById('dashboard-view');
-  const walletInput = document.getElementById('wallet-input');
   const errorMsg = document.getElementById('error-msg');
 
-  const saved = sessionStorage.getItem('canvas_owner_wallet');
-  if (saved) loadDashboard(saved);
+  // Signed auth: the API requires a wallet signature of "Canvas auth: <epoch-ms>"
+  // within a 5-minute window. Cache {wallet, ts, sig} for 4 minutes so refreshes
+  // don't re-prompt; past that the user reconnects with one click.
+  const AUTH_KEY = 'canvas_owner_auth';
+  const AUTH_MAX_AGE_MS = 4 * 60 * 1000;
 
-  walletInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+  function savedAuth() {
+    try {
+      const raw = sessionStorage.getItem(AUTH_KEY);
+      if (!raw) return null;
+      const auth = JSON.parse(raw);
+      if (!auth.wallet || !auth.ts || !auth.sig) return null;
+      if (Date.now() - Number(auth.ts) > AUTH_MAX_AGE_MS) return null;
+      return auth;
+    } catch { return null; }
+  }
+
+  const restored = savedAuth();
+  if (restored) loadDashboard(restored);
 
   function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
   function clearError() { errorMsg.style.display = 'none'; }
 
+  async function getProvider() {
+    // Injected wallet when present; otherwise the Coinbase smart wallet popup via the
+    // Base Account SDK (server sends COOP same-origin-allow-popups so this works in
+    // Telegram's in-app browser too).
+    if (window.ethereum) return window.ethereum;
+    const { createBaseAccountSDK } = await import('https://esm.sh/@base-org/account');
+    return createBaseAccountSDK({ appName: 'Canvas Protocol' }).getProvider();
+  }
+
+  async function connectAndSign() {
+    const provider = await getProvider();
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    const wallet = accounts[0];
+    if (!wallet) throw new Error('No wallet connected');
+    const ts = Date.now();
+    const message = 'Canvas auth: ' + ts;
+    const hexMessage = '0x' + Array.from(new TextEncoder().encode(message))
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+    const sig = await provider.request({ method: 'personal_sign', params: [hexMessage, wallet] });
+    return { wallet, ts, sig };
+  }
+
   async function login() {
-    const wallet = walletInput.value.trim();
-    if (!/^0x[a-fA-F0-9]{40}$/i.test(wallet)) {
-      showError('Enter a valid Base wallet address (0x...)');
-      return;
-    }
     clearError();
     const btn = document.getElementById('login-btn');
     btn.disabled = true;
-    btn.textContent = 'Loading...';
-    await loadDashboard(wallet);
+    btn.textContent = 'Connecting...';
+    try {
+      const auth = await connectAndSign();
+      await loadDashboard(auth);
+    } catch (err) {
+      showError(err?.message || 'Wallet connection failed or was cancelled.');
+    }
     btn.disabled = false;
-    btn.textContent = 'View Dashboard';
+    btn.textContent = 'Connect wallet';
   }
 
-  async function loadDashboard(wallet) {
+  async function loadDashboard(auth) {
     try {
-      const res = await fetch('/api/group-owner?wallet=' + encodeURIComponent(wallet));
+      const res = await fetch(
+        '/api/group-owner?wallet=' + encodeURIComponent(auth.wallet) +
+        '&ts=' + encodeURIComponent(auth.ts) +
+        '&sig=' + encodeURIComponent(auth.sig),
+      );
       const data = await res.json();
-      if (!res.ok) { showError(data.error || 'Could not load dashboard.'); return; }
-      sessionStorage.setItem('canvas_owner_wallet', wallet);
+      if (!res.ok) {
+        if (res.status === 401) sessionStorage.removeItem(AUTH_KEY);
+        showError(data.error || 'Could not load dashboard.');
+        return;
+      }
+      sessionStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       renderDashboard(data);
     } catch (err) {
       showError('Network error. Please try again.');
@@ -356,10 +400,9 @@
   }
 
   function logout() {
-    sessionStorage.removeItem('canvas_owner_wallet');
+    sessionStorage.removeItem(AUTH_KEY);
     dashView.style.display = 'none';
     loginView.style.display = 'block';
-    walletInput.value = '';
     clearError();
   }
 </script>

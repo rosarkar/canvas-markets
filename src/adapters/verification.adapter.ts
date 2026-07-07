@@ -252,6 +252,23 @@ export async function hasRecentGroupAttempt(
 }
 
 /**
+ * When the user's most recent real attempt in this group happened — used to tell
+ * rejected users how long until they can retry. updated_at ≈ when the attempt
+ * reached its terminal state (which is when the cooldown clock started).
+ */
+export async function getLastRealAttemptAt(
+  tgUserId: bigint,
+  groupId: number,
+): Promise<Date | null> {
+  const res = await db.query<{ t: Date | null }>(
+    `SELECT MAX(updated_at) AS t FROM verifications
+     WHERE tg_user_id = $1 AND group_id = $2 AND state <> 'COOLDOWN_REJECTED'`,
+    [tgUserId.toString(), groupId],
+  );
+  return res.rows[0]?.t ?? null;
+}
+
+/**
  * Audit log for join attempts turned away before a verification could start.
  * Terminal on insert; invisible to sweeps and the attempt-window check.
  */

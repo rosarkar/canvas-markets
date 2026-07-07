@@ -9,7 +9,7 @@ import {
   logCooldownRejection,
 } from "@/adapters/verification.adapter.js";
 import { beginVerification } from "@/telegram/services/begin-verification.js";
-import { declineJoinRequest } from "@/telegram/verification-actions.js";
+import { declineJoinRequest, notifyCooldownRejection } from "@/telegram/verification-actions.js";
 import { logger } from "@/utils/logger.js";
 
 export function registerJoinRequestHandler(bot: Bot): void {
@@ -40,6 +40,7 @@ export function registerJoinRequestHandler(bot: Bot): void {
 
     if (await isUserInCooldown(tgUserId, group.groupId)) {
       await logCooldownRejection(tgUserId, group.groupId, "group_cooldown_24h", "join_request");
+      await notifyCooldownRejection(ctx.api, tgUserId, group.groupId, group.groupTitle ?? "the group", "group_cooldown_24h");
       await declineJoinRequest(ctx.api, chat.id, user.id);
       return;
     }
@@ -61,6 +62,7 @@ export function registerJoinRequestHandler(bot: Bot): void {
         "Join request declined — per-group 12h attempt limit",
       );
       await logCooldownRejection(tgUserId, group.groupId, "attempt_limit_12h", "join_request");
+      await notifyCooldownRejection(ctx.api, tgUserId, group.groupId, group.groupTitle ?? "the group", "attempt_limit_12h");
       await declineJoinRequest(ctx.api, chat.id, user.id);
       return;
     }

@@ -1,6 +1,39 @@
 import type { Api } from "grammy";
 
+import { getLastRealAttemptAt } from "@/adapters/verification.adapter.js";
 import { logger } from "@/utils/logger.js";
+
+const HOUR_MS = 3_600_000;
+const COOLDOWN_WINDOWS_MS = {
+  group_cooldown_24h: 24 * HOUR_MS,
+  attempt_limit_12h: 12 * HOUR_MS,
+} as const;
+
+/**
+ * Best-effort DM telling a turned-away user why and when they can retry. Most rejected
+ * users have already started the bot (that's how they got into cooldown), so this
+ * usually lands. Never throws — a DM failure must not break the rejection flow.
+ */
+export async function notifyCooldownRejection(
+  api: Api,
+  tgUserId: bigint,
+  groupId: number,
+  groupTitle: string,
+  reason: keyof typeof COOLDOWN_WINDOWS_MS,
+): Promise<void> {
+  try {
+    const lastAttempt = await getLastRealAttemptAt(tgUserId, groupId);
+    const retryAt = (lastAttempt?.getTime() ?? Date.now()) + COOLDOWN_WINDOWS_MS[reason];
+    const hoursLeft = Math.max(1, Math.ceil((retryAt - Date.now()) / HOUR_MS));
+    await api.sendMessage(
+      Number(tgUserId),
+      `⏳ You recently attempted verification for **${groupTitle}** — you can try again in about ${hoursLeft} hour${hoursLeft === 1 ? "" : "s"}.`,
+      { parse_mode: "Markdown" },
+    );
+  } catch {
+    /* user never started the bot or blocked it — rejection proceeds regardless */
+  }
+}
 
 const MUTED_PERMISSIONS = {
   can_send_messages: false,

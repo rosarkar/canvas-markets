@@ -11,7 +11,7 @@ import {
   logCooldownRejection,
 } from "@/adapters/verification.adapter.js";
 import { beginVerification } from "@/telegram/services/begin-verification.js";
-import { rejectUser } from "@/telegram/verification-actions.js";
+import { notifyCooldownRejection, rejectUser } from "@/telegram/verification-actions.js";
 import { logger } from "@/utils/logger.js";
 
 export async function handleMemberJoin(
@@ -51,6 +51,7 @@ export async function handleMemberJoin(
   if (await isUserInCooldown(tgUserId, group.groupId)) {
     logger.info({ tgUserId: tgUserId.toString(), groupId: group.groupId }, "Join rejected — cooldown");
     await logCooldownRejection(tgUserId, group.groupId, "group_cooldown_24h", "open_join");
+    await notifyCooldownRejection(api, tgUserId, group.groupId, group.groupTitle ?? groupTitle ?? "the group", "group_cooldown_24h");
     await rejectUser(api, chatId, tgUserId);
     return;
   }
@@ -77,6 +78,7 @@ export async function handleMemberJoin(
       "Join rejected — per-group 12h attempt limit",
     );
     await logCooldownRejection(tgUserId, group.groupId, "attempt_limit_12h", "open_join");
+    await notifyCooldownRejection(api, tgUserId, group.groupId, group.groupTitle ?? groupTitle ?? "the group", "attempt_limit_12h");
     await rejectUser(api, chatId, tgUserId);
     return;
   }

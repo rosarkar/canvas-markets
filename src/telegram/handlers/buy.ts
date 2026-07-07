@@ -401,6 +401,20 @@ export async function showBuyEntryMenu(
   fromId: number,
   topUpOnly: boolean,
 ): Promise<void> {
+  // Wallet-linked gate: every refund path (withdraw, owner decline) pays the wallet in
+  // the advertisers table via releasePayout. Without one on record, a funded campaign's
+  // refund dead-ends at "contact support" — so require /link before any money moves.
+  const advertiser = await getAdvertiserByTgId(BigInt(fromId));
+  if (!advertiser?.walletAddress) {
+    await ctx.reply(
+      "Before funding a campaign, link the wallet that should receive any refunds:\n\n" +
+        "`/link 0xYourBaseAddress`\n\n" +
+        "Then run /buy again." + BACK_FOOTER,
+      { parse_mode: "Markdown" },
+    );
+    return;
+  }
+
   const myCampaigns = await listTopUpEligibleCampaigns(BigInt(fromId));
 
   if (topUpOnly && myCampaigns.length === 0) {

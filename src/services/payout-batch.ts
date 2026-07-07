@@ -42,18 +42,43 @@ export async function runPayoutBatch(): Promise<{ txCount: number; totalMicro: b
     }
     locked = true;
 
-    // Optional watchdog: rows claimed to 'processing' by an earlier run that never
-    // resolved (crashed batch, missed final status write). Nothing retries these
-    // automatically — surface them so they get looked at instead of rotting silently.
-    const stuck = await client.query<{ verification_id: string }>(
-      `SELECT verification_id FROM verifications
-       WHERE payout_status = 'processing' AND updated_at < NOW() - INTERVAL '6 hours'`,
+    // Recovery for rows stuck in 'processing' >6h (crashed batch, missed final status
+    // write). Two tiers:
+    //  - payout_tx_hash IS NULL: releasePayout almost certainly never fired — reset to
+    //    'pending' so this very run retries them. Caveat: a crash in the narrow window
+    //    between tx broadcast and the status write also leaves a null hash; retrying
+    //    such a row can double-pay that leg. Accepted per BUILD.md — the window is
+    //    milliseconds wide and the alternative is stranding payouts forever.
+    //  - payout_tx_hash IS NOT NULL: the transfer went out but the 'paid' write was
+    //    missed. Money may have moved — never auto-retry; alert for manual review.
+    const reset = await client.query<{ verification_id: string }>(
+      `UPDATE verifications
+       SET payout_status = 'pending', updated_at = NOW()
+       WHERE payout_status = 'processing'
+         AND payout_tx_hash IS NULL
+         AND updated_at < NOW() - INTERVAL '6 hours'
+       RETURNING verification_id`,
     );
-    if (stuck.rows.length > 0) {
-      const ids = stuck.rows.map((r) => r.verification_id);
+    if (reset.rows.length > 0) {
+      const ids = reset.rows.map((r) => r.verification_id);
       await sendAdminAlert(
-        `${ids.length} payout row(s) stuck in 'processing' for >6h (crashed batch?): ${previewIds(ids)}. ` +
-          `Not retried automatically — check payout_tx_hash: null means the transfer never fired.`,
+        `Payout recovery: reset ${ids.length} stuck 'processing' row(s) (no tx hash, >6h old) ` +
+          `back to 'pending' — retrying in this batch run. ${previewIds(ids)}`,
+      );
+    }
+
+    const stuckWithHash = await client.query<{ verification_id: string }>(
+      `SELECT verification_id FROM verifications
+       WHERE payout_status = 'processing'
+         AND payout_tx_hash IS NOT NULL
+         AND updated_at < NOW() - INTERVAL '6 hours'`,
+    );
+    if (stuckWithHash.rows.length > 0) {
+      const ids = stuckWithHash.rows.map((r) => r.verification_id);
+      await sendAdminAlert(
+        `${ids.length} payout row(s) stuck in 'processing' >6h WITH a tx hash — transfer likely ` +
+          `fired but the paid write was missed. Needs manual review (verify tx on Basescan, then ` +
+          `set payout_status manually): ${previewIds(ids)}`,
       );
     }
 

@@ -55,6 +55,16 @@ export function startTelegramBot(): void {
   const app = express();
   app.use(express.json());
 
+  // Telegram's in-app browser sets COOP same-origin, which severs window.opener and
+  // breaks the Coinbase smart wallet SDK's popup flow on the deposit page
+  // ("This app doesn't support smart wallets" from keys.coinbase.com).
+  // same-origin-allow-popups keeps our pages isolated but lets the wallet popup
+  // hold its opener reference. Applied to all responses — harmless for the API routes.
+  app.use((_req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    next();
+  });
+
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   app.use("/mini-app", express.static(path.join(repoRoot, "public/mini-app")));
   app.use("/advertiser", express.static(path.join(repoRoot, "public/advertiser")));

@@ -232,6 +232,8 @@ export interface ExpiredVerification {
   groupId: number;
   tgGroupId: bigint;
   entryType: VerificationEntryType;
+  /** State the row was in when swept — RESPONSE_RECEIVED/SCORING means it was stranded mid-finalize. */
+  previousState: string;
 }
 
 export async function expireStaleVerifications(): Promise<ExpiredVerification[]> {
@@ -241,14 +243,29 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
     group_id: number;
     tg_group_id: string;
     entry_type: VerificationEntryType;
+    previous_state: string;
   }>(
+    // Two tiers:
+    //  - DEEP_LINK_SENT/TASK_SENT past expires_at: the normal user-never-answered timeout.
+    //  - RESPONSE_RECEIVED/SCORING 2+ minutes past expires_at: stranded mid-finalize by a
+    //    crash (these states normally last seconds). The grace window keeps an in-flight
+    //    finalize from racing the sweep; if both fire, the CAS in transitionState means
+    //    exactly one side wins. Without this tier the user stayed muted forever.
     `UPDATE verifications v
      SET state = 'TIMED_OUT', updated_at = NOW()
      FROM groups g
      WHERE v.group_id = g.group_id
-       AND v.state IN ('DEEP_LINK_SENT', 'TASK_SENT')
-       AND v.expires_at < NOW()
-     RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id, v.entry_type`,
+       AND (
+         (v.state IN ('DEEP_LINK_SENT', 'TASK_SENT') AND v.expires_at < NOW())
+         OR
+         (v.state IN ('RESPONSE_RECEIVED', 'SCORING')
+          AND v.expires_at < NOW() - INTERVAL '2 minutes')
+       )
+     RETURNING v.verification_id, v.tg_user_id, v.group_id, g.tg_group_id, v.entry_type,
+               -- RETURNING v.state would show the new value ('TIMED_OUT'); a subquery runs
+               -- against the statement's start-of-statement snapshot, so it sees the old state.
+               (SELECT state FROM verifications x
+                WHERE x.verification_id = v.verification_id) AS previous_state`,
   );
   const expired: ExpiredVerification[] = [];
   for (const row of res.rows) {
@@ -259,6 +276,7 @@ export async function expireStaleVerifications(): Promise<ExpiredVerification[]>
       groupId: row.group_id,
       tgGroupId: BigInt(row.tg_group_id),
       entryType: row.entry_type ?? "open_join",
+      previousState: row.previous_state,
     });
   }
   return expired;
@@ -285,6 +303,36 @@ export async function expireStaleRulesPending(): Promise<TimedOutRulesPending[]>
      WHERE state = 'RULES_PENDING'
        AND expires_at < NOW()
      RETURNING verification_id, tg_user_id, group_id`,
+  );
+  return res.rows.map((row) => ({
+    verificationId: row.verification_id,
+    tgUserId: BigInt(row.tg_user_id),
+    groupId: row.group_id,
+  }));
+}
+
+export interface StuckPassedVerification {
+  verificationId: string;
+  tgUserId: bigint;
+  groupId: number;
+}
+
+/**
+ * Rows stranded in PASSED: completeVerificationPass crashed between the PASSED
+ * transition and the RULES_PENDING transition (e.g. process restart, DB blip).
+ * PASSED is excluded from the active-verification set, so without recovery the
+ * user stays muted forever and a duplicate verification can start.
+ */
+export async function getStuckPassedVerifications(): Promise<StuckPassedVerification[]> {
+  const res = await db.query<{
+    verification_id: string;
+    tg_user_id: string;
+    group_id: number;
+  }>(
+    `SELECT verification_id, tg_user_id, group_id
+     FROM verifications
+     WHERE state = 'PASSED'
+       AND updated_at < NOW() - INTERVAL '2 minutes'`,
   );
   return res.rows.map((row) => ({
     verificationId: row.verification_id,

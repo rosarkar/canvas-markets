@@ -9,6 +9,14 @@
 
 ## Changelog
 
+### July 7, 2026 — remaining open items closed (commits f02b19a → a2e6897)
+
+- `f02b19a` / `a2e6897` — **Verification rate limiting + rejection audit log:** one attempt per Telegram user **per group** per 12h, keyed `(tg_user_id, group_id)`, enforced at both join entry points after the active-verification resume check. Every turned-away join (24h failure cooldown or 12h attempt limit) now inserts a `COOLDOWN_REJECTED` row with `rejection_reason` (`group_cooldown_24h` | `attempt_limit_12h`) — invisible to sweeps/payouts, excluded from the window check so repeated knocking can't extend a lockout, and a ready-made signal source for Phase 2 abuse detection (per-group rejection pressure).
+- `c9e6a5f` — **Kimi-outage scoring retry queue:** Kimi *errors* no longer fail users closed. The row parks in `SCORING` (user DM'd "no action needed"), a 60s sweep retries up to 4 times over ~10 min through the same CAS transitions, and only exhausted retries fail closed — with an admin alert. Genuine low scores never defer. Known tradeoff: the binary-task reasoning bonus only applies on immediate scoring.
+- `a756d6d` — **Refund-wallet gate on the buy flow:** `/buy` and `/topup` require a linked wallet in `advertisers` before any funding flow starts (all refund paths pay that wallet via `releasePayout`). Live-DB audit: all real advertisers already linked; only `tg_id = 0` seed artifacts weren't.
+
+---
+
 ### July 5–7, 2026 — deployment cutover, escrow redeploy, pending-items marathon
 
 **Infrastructure cutover (July 5):**
@@ -248,11 +256,8 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
-**Rate limiting — one verification attempt per Telegram handle per 12 hours across all groups**
-- **Current state:** Every table scopes by `(tg_user_id, group_id)` pairs. There is no global user tracking table. A user can attempt verification in unlimited groups simultaneously.
-- **Why it matters:** Without rate limiting, a coordinated bot farm can cycle the same handles across many groups quickly.
-- **Proposed fix:** Add a `user_cooldowns` table (may already exist in schema — check) with columns `tg_user_id`, `last_attempt_at`, `attempt_count`. On each join intercept in `join.ts`, query this table. If `last_attempt_at > NOW() - INTERVAL '12 hours'`, reject with a message and do not start a verification.
-- **Note:** Rate limiting was deliberately deferred to preserve maximum visible verification counts during early investor conversations. Implement before public rollout.
+**Rate limiting — ✅ RESOLVED (July 7, commits `f02b19a` + `a2e6897`)**
+- Per-group 12h attempt limit keyed `(tg_user_id, group_id)`, queried straight off the `verifications` table (no new tracking table needed). All rejections logged as `COOLDOWN_REJECTED` rows with reasons. Final semantics per founder decision: turned away from group A ≠ blocked from group B.
 
 ---
 
@@ -273,17 +278,13 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ---
 
-**Kimi outage now fails advertiser-funded verifications closed**
-- **File:** `src/services/scoring.ts` (July 4 Fix 2)
-- **Symptom:** During a Kimi outage, advertiser-funded verifications fail closed — genuine users caught in an outage will hit the 24-hour cooldown.
-- **Fix:** A scoring-retry queue is the Phase 2 fix.
+**Kimi outage now fails advertiser-funded verifications closed — ✅ RESOLVED (July 7, commit `c9e6a5f`)**
+- Scoring retry queue shipped: Kimi errors defer the row in `SCORING` and retry over ~10 min; only exhausted retries fail closed (admin alerted). See `src/services/scoring-retry.ts`.
 
 ---
 
-**Withdraw dead-ends for advertisers with no linked wallet**
-- **File:** `src/telegram/handlers/campaigns.ts` (July 4 Fix 6)
-- **Symptom:** Advertisers with no wallet linked in the `advertisers` table will hit a "contact support" dead end on withdraw rather than falling back to `refundUnusedBudget` (deliberate — the fallback is the theft vector).
-- **Action:** Verify all active advertisers have a linked wallet before live advertiser campaigns go out.
+**Withdraw dead-ends for advertisers with no linked wallet — ✅ RESOLVED (July 7, commit `a756d6d`)**
+- `/buy` and `/topup` now require a linked refund wallet before any funding starts, so the dead end can no longer be reached by new campaigns. Existing advertisers audited: all real ones have wallets linked.
 
 ---
 

@@ -131,6 +131,8 @@ export async function createCanvasTables(): Promise<void> {
       -- outcome can never overwrite payout_status (owner payout bookkeeping).
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS fee_status TEXT;
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS fee_tx_hash TEXT;
+      -- Kimi-outage retry queue: attempts made by the scoring-retry sweep.
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS scoring_retries INT NOT NULL DEFAULT 0;
 
       CREATE INDEX IF NOT EXISTS idx_verifications_payout_pending
         ON verifications (payout_status) WHERE payout_status = 'pending';

@@ -113,6 +113,12 @@ async function handleDmTextResponse(
     return true;
   }
 
+  if (result.outcome === "scoring_deferred") {
+    // Kimi errored; the "hang tight" DM was already sent and the scoring-retry sweep
+    // owns the rest of this verification's lifecycle.
+    return true;
+  }
+
   // On "passed", no reply here — completeVerificationPass (called inside
   // processTextVerificationResponse) sends the rules-agreement DM, which gates
   // admission until the user taps "I agree".

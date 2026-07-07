@@ -6,7 +6,7 @@ import {
   transitionState,
   type VerificationRow,
 } from "@/adapters/verification.adapter.js";
-import { scoreWithKimi, passesThreshold } from "@/services/scoring.js";
+import { scoreWithKimi, passesThreshold, type ScoreResult } from "@/services/scoring.js";
 import {
   TaskType,
   parseTaskPayload,
@@ -32,7 +32,9 @@ export type TextVerificationOutcome =
   | { outcome: "failed"; score: number }
   | { outcome: "re_prompted" }
   /** A concurrent update already claimed this verification — do nothing, send nothing. */
-  | { outcome: "already_processed" };
+  | { outcome: "already_processed" }
+  /** Kimi errored — row parked in SCORING for the retry sweep; user was told to wait. */
+  | { outcome: "scoring_deferred" };
 
 const BACK_FOOTER = "\n\nType /start to return to the main menu.";
 const DEFAULT_OPEN_TEXT_REPROMPT = "Can you say a bit more? A specific detail or two helps." + BACK_FOOTER;
@@ -87,7 +89,44 @@ async function finalize(
   const result = noAdvertiser
     ? { score: 100, method: "manual" as const }
     : await scoreWithKimi(scoringPrompt, responseText, { failClosed: true });
-  const passed = noAdvertiser || passesThreshold(result);
+
+  if (result.method === "fail_closed") {
+    // Kimi errored (not a genuine low score) — don't burn the user's attempt. Park the
+    // row in SCORING for the retry sweep (scoring-retry.ts, runs every 60s, max 4
+    // tries) and push expires_at out so the stranded-row sweep leaves it alone.
+    await transitionState(verification.verificationId, VerificationState.SCORING, {
+      expiresAt: new Date(Date.now() + 15 * 60_000),
+      expectedState: VerificationState.SCORING,
+    });
+    try {
+      await api.sendMessage(
+        Number(verification.tgUserId),
+        "⏳ Scoring is taking a moment longer than usual — no action needed, we'll finish up shortly.",
+      );
+    } catch {
+      /* DM failure must not affect the deferral */
+    }
+    return { outcome: "scoring_deferred" };
+  }
+
+  return completeScoredVerification(api, verification, result, bonusMicroUnits);
+}
+
+/**
+ * Final transitions + user-facing completion for a scored verification. Shared by the
+ * immediate path (finalize) and the scoring-retry sweep. CAS on SCORING makes it safe
+ * against a concurrent completion.
+ *
+ * Note: bonusMicroUnits only applies on immediate scoring — deferred completions pay
+ * the base rate (the bonus context isn't persisted with the row).
+ */
+export async function completeScoredVerification(
+  api: Api,
+  verification: VerificationRow,
+  result: ScoreResult,
+  bonusMicroUnits?: bigint,
+): Promise<TextVerificationOutcome> {
+  const passed = result.method === "manual" || passesThreshold(result);
 
   const group = await getGroupById(verification.groupId);
   if (!group) throw new Error("Group not found");
@@ -125,6 +164,23 @@ async function finalize(
   return passed
     ? { outcome: "passed", score: result.score }
     : { outcome: "failed", score: result.score };
+}
+
+/** Rebuild the scoring prompt from the stored row — used by the retry sweep. */
+export async function buildScoringPrompt(verification: VerificationRow): Promise<string> {
+  const taskType = (verification.taskType as TaskType) ?? TaskType.OPEN_TEXT;
+  if (taskType === TaskType.RANK_REASONING) {
+    const payload = parseTaskPayload(taskType, verification.taskPayload) as RankReasoningPayload | null;
+    return payload?.prompt ?? "Rank these items.";
+  }
+  if (taskType === TaskType.BINARY_REASONING) {
+    const payload = parseTaskPayload(taskType, verification.taskPayload) as BinaryReasoningPayload | null;
+    return payload?.prompt ?? "Pick an option.";
+  }
+  const payload = parseTaskPayload(TaskType.OPEN_TEXT, verification.taskPayload) as OpenTextPayload | null;
+  if (payload?.prompt) return payload.prompt;
+  const group = await getGroupById(verification.groupId);
+  return group?.verificationTaskText ?? "Tell us about yourself.";
 }
 
 /**

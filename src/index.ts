@@ -11,6 +11,7 @@ import { getGroupById } from "@/adapters/groups.adapter.js";
 import { previewIds, sendAdminAlert } from "@/services/admin-alerts.js";
 import { startDepositMonitor } from "@/services/deposit-monitor.js";
 import { startPayoutBatchScheduler } from "@/services/payout-batch.js";
+import { retryDeferredScoring } from "@/services/scoring-retry.js";
 import { getBot, startTelegramBot } from "@/telegram/bot.js";
 import { runAutoAcceptSweep } from "@/telegram/handlers/campaign-approval.js";
 import {
@@ -31,6 +32,12 @@ async function main(): Promise<void> {
 
   // Expire stale verifications every minute
   setInterval(() => {
+    // Kimi-outage retry queue: re-score rows parked in SCORING before the TTL sweep
+    // can touch them (deferral pushes their expires_at out 15 min).
+    retryDeferredScoring(getBot().api).catch((err) =>
+      logger.error({ err }, "Scoring retry sweep failed"),
+    );
+
     expireStaleVerifications()
       .then(async (expired) => {
         if (expired.length === 0) return;

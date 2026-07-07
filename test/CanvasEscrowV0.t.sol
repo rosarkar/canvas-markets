@@ -78,4 +78,45 @@ contract CanvasEscrowV0Test is Test {
         assertEq(escrow.campaignBalance(4), 50_000);
         assertEq(usdc.balanceOf(advertiser), 950_000);
     }
+
+    /// Dust-deposit attack: a later depositor must NOT become the refund recipient.
+    function test_depositBudget_dustDepositCannotHijackRefund() public {
+        address attacker = address(0xBAD);
+        usdc.mint(attacker, 10);
+        vm.prank(attacker);
+        usdc.approve(address(escrow), type(uint256).max);
+
+        vm.prank(advertiser);
+        escrow.depositBudget(5, 100_000);
+        vm.prank(attacker);
+        escrow.depositBudget(5, 1); // dust
+
+        assertEq(escrow.campaignDepositor(5), advertiser);
+
+        vm.prank(relayer);
+        escrow.refundUnusedBudget(5, 100_001);
+        assertEq(usdc.balanceOf(advertiser), 1_000_001); // refund (incl. dust) to first depositor
+        assertEq(usdc.balanceOf(attacker), 9);
+    }
+
+    function test_creditDirectDeposit_cannotOverwriteDepositor() public {
+        vm.prank(advertiser);
+        escrow.depositBudget(6, 100_000);
+
+        usdc.mint(address(escrow), 50_000);
+        vm.prank(relayer);
+        escrow.creditDirectDeposit(6, address(0xBAD), 50_000);
+
+        assertEq(escrow.campaignDepositor(6), advertiser);
+    }
+
+    /// Top-ups still add budget normally; only the depositor pointer is frozen.
+    function test_depositBudget_topUpStillAddsBudget() public {
+        vm.prank(advertiser);
+        escrow.depositBudget(7, 100_000);
+        vm.prank(advertiser);
+        escrow.depositBudget(7, 50_000);
+        assertEq(escrow.campaignBalance(7), 150_000);
+        assertEq(escrow.campaignDepositor(7), advertiser);
+    }
 }

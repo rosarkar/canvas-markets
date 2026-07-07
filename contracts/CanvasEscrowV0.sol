@@ -40,7 +40,12 @@ contract CanvasEscrowV0 {
         require(usdc.transferFrom(msg.sender, address(this), amount), "transfer failed");
         campaignBalance[campaignId] += amount;
         totalHeld += amount;
-        campaignDepositor[campaignId] = msg.sender;
+        // First depositor wins: later deposits (top-ups or third parties) can add budget
+        // but can never redirect the refund recipient. Closes the dust-deposit theft
+        // vector where an attacker overwrote campaignDepositor before a refund.
+        if (campaignDepositor[campaignId] == address(0)) {
+            campaignDepositor[campaignId] = msg.sender;
+        }
         emit BudgetDeposited(campaignId, msg.sender, amount);
     }
 
@@ -50,7 +55,10 @@ contract CanvasEscrowV0 {
         if (amount > free) revert InsufficientUnallocated();
         campaignBalance[campaignId] += amount;
         totalHeld += amount;
-        campaignDepositor[campaignId] = depositor;
+        // Same first-depositor guard as depositBudget.
+        if (campaignDepositor[campaignId] == address(0)) {
+            campaignDepositor[campaignId] = depositor;
+        }
         emit BudgetDeposited(campaignId, depositor, amount);
     }
 

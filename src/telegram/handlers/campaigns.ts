@@ -330,6 +330,13 @@ export function registerCampaignHandlers(bot: Bot): void {
 
     const result = await withdrawCampaign(id, BigInt(fromId));
     if (!result.ok) {
+      if (result.inFlight) {
+        await ctx.answerCallbackQuery({
+          text: `${result.inFlight} member(s) are mid-verification on this campaign right now — try again in a few minutes so their payout isn't stranded.`,
+          show_alert: true,
+        });
+        return;
+      }
       await ctx.answerCallbackQuery({ text: "Withdraw failed.", show_alert: true });
       return;
     }

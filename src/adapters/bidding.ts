@@ -1,4 +1,5 @@
 import { db } from "@/db.js";
+import { BID_LOCK_STATES } from "@/services/verification-states.js";
 
 export interface TopBid {
   advertiserId: number;
@@ -424,7 +425,7 @@ export async function resumeCampaign(advertiserId: number, advertiserTgId: bigin
 export async function withdrawCampaign(
   advertiserId: number,
   advertiserTgId: bigint,
-): Promise<{ ok: boolean; refundMicro: bigint; groupId: number | null }> {
+): Promise<{ ok: boolean; refundMicro: bigint; groupId: number | null; inFlight?: number }> {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -442,6 +443,22 @@ export async function withdrawCampaign(
     if (!row || !["active", "paused", "pending_approval"].includes(row.campaign_status)) {
       await client.query("ROLLBACK");
       return { ok: false, refundMicro: 0n, groupId: null };
+    }
+
+    // Block while verifications are mid-flight at a locked bid against this campaign:
+    // draining escrow now would strand the group owner's payout when the user passes
+    // moments later (batch would find insufficient balance). Locked states are short-
+    // lived (5-min task TTL), so "try again in a few minutes" is accurate.
+    const inFlight = await client.query<{ n: string }>(
+      `SELECT COUNT(*) AS n FROM verifications
+       WHERE advertiser_id = $1
+         AND state = ANY($2::text[])`,
+      [advertiserId, BID_LOCK_STATES],
+    );
+    const inFlightCount = Number(inFlight.rows[0]?.n ?? 0);
+    if (inFlightCount > 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, refundMicro: 0n, groupId: row.group_id, inFlight: inFlightCount };
     }
 
     const refundMicro = BigInt(row.remaining_budget);

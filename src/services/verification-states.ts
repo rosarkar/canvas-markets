@@ -18,6 +18,12 @@ export const VerificationState = {
   /** Missed the RULES_PENDING window. Unlike TIMED_OUT, the user is left muted, not kicked. */
   RULES_TIMED_OUT: "RULES_TIMED_OUT",
   MUTED: "MUTED",
+  /**
+   * Join attempt logged but turned away (cooldown / 12h attempt limit). Not a real
+   * verification: excluded from the attempt-window check and invisible to sweeps,
+   * payout, and active-verification queries (all filter on explicit state lists).
+   */
+  COOLDOWN_REJECTED: "COOLDOWN_REJECTED",
 } as const;
 
 export type VerificationState = (typeof VerificationState)[keyof typeof VerificationState];

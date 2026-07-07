@@ -226,28 +226,46 @@ export async function hasPassedVerification(
   return res.rows.length > 0;
 }
 
-/** Global rate limit window: one verification attempt per Telegram user across all groups. */
-const GLOBAL_ATTEMPT_WINDOW = "12 hours";
+/** Rate limit window: one verification attempt per Telegram user per group. */
+const GROUP_ATTEMPT_WINDOW = "12 hours";
 
 /**
- * True if the user started a verification in any OTHER group within the window.
- * Same-group retries are excluded — they're governed by the per-group cooldown and
- * active-verification resume logic. This blocks the bot-farm pattern of cycling one
- * handle across many groups in quick succession.
+ * True if the user already started a verification in THIS group within the window.
+ * Other groups are unaffected — a user turned away from group A can still verify in
+ * group B. COOLDOWN_REJECTED log rows are excluded so repeated knocking can't refresh
+ * the window and lock a user out indefinitely.
  */
-export async function hasRecentGlobalAttempt(
+export async function hasRecentGroupAttempt(
   tgUserId: bigint,
-  excludeGroupId: number,
+  groupId: number,
 ): Promise<boolean> {
   const res = await db.query(
     `SELECT 1 FROM verifications
      WHERE tg_user_id = $1
-       AND group_id <> $2
-       AND created_at > NOW() - INTERVAL '${GLOBAL_ATTEMPT_WINDOW}'
+       AND group_id = $2
+       AND state <> 'COOLDOWN_REJECTED'
+       AND created_at > NOW() - INTERVAL '${GROUP_ATTEMPT_WINDOW}'
      LIMIT 1`,
-    [tgUserId.toString(), excludeGroupId],
+    [tgUserId.toString(), groupId],
   );
   return res.rows.length > 0;
+}
+
+/**
+ * Audit log for join attempts turned away before a verification could start.
+ * Terminal on insert; invisible to sweeps and the attempt-window check.
+ */
+export async function logCooldownRejection(
+  tgUserId: bigint,
+  groupId: number,
+  reason: "group_cooldown_24h" | "attempt_limit_12h",
+  entryType: VerificationEntryType,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO verifications (tg_user_id, group_id, state, rejection_reason, entry_type)
+     VALUES ($1, $2, 'COOLDOWN_REJECTED', $3, $4)`,
+    [tgUserId.toString(), groupId, reason, entryType],
+  );
 }
 
 export interface ExpiredVerification {

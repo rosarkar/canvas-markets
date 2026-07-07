@@ -141,23 +141,14 @@ export async function confirmCampaignDeposit(
       return { confirmed: false, displacedAdvertiserTgId: null };
     }
 
-    const previous = await client.query<{ advertiser_tg_id: string | null; bid_per_verification: string }>(
-      `SELECT advertiser_tg_id, bid_per_verification FROM advertiser_budgets
-       WHERE group_id = $1 AND campaign_status = 'active' AND advertiser_id != $2
-       ORDER BY bid_per_verification DESC LIMIT 1`,
-      [row.group_id, advertiserId],
-    );
-    const prevRow = previous.rows[0];
-    const newBid = BigInt(row.bid_per_verification);
-    let displacedTgId: bigint | null = null;
-
-    if (prevRow?.advertiser_tg_id && newBid > BigInt(prevRow.bid_per_verification)) {
-      displacedTgId = BigInt(prevRow.advertiser_tg_id);
-    }
-
+    // Funded campaigns now enter 'pending_approval' — the group owner accepts or
+    // declines before the campaign can serve tasks (auto-accept after 48h). The
+    // outbid/displacement notification moved to approveCampaign: a pending campaign
+    // hasn't outbid anyone yet.
     await client.query(
       `UPDATE advertiser_budgets
-       SET campaign_status = 'active',
+       SET campaign_status = 'pending_approval',
+           approval_requested_at = NOW(),
            remaining_budget = $2,
            deposit_tx_hash = $3,
            deposit_confirmed_at = NOW(),
@@ -167,13 +158,179 @@ export async function confirmCampaignDeposit(
     );
 
     await client.query("COMMIT");
-    return { confirmed: true, displacedAdvertiserTgId: displacedTgId };
+    return { confirmed: true, displacedAdvertiserTgId: null };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
   } finally {
     client.release();
   }
+}
+
+export interface CampaignApprovalInfo {
+  advertiserId: number;
+  groupId: number;
+  ownerTgId: bigint | null;
+  groupTitle: string | null;
+  advertiserTgId: bigint | null;
+  bidPerVerification: bigint;
+  remainingBudget: bigint;
+  taskText: string | null;
+  campaignStatus: string;
+}
+
+export async function getCampaignApprovalInfo(
+  advertiserId: number,
+): Promise<CampaignApprovalInfo | null> {
+  const res = await db.query<{
+    advertiser_id: number;
+    group_id: number;
+    owner_tg_id: string | null;
+    group_title: string | null;
+    advertiser_tg_id: string | null;
+    bid_per_verification: string;
+    remaining_budget: string;
+    task_text: string | null;
+    campaign_status: string;
+  }>(
+    `SELECT ab.advertiser_id, ab.group_id, g.owner_tg_id::TEXT AS owner_tg_id,
+            g.group_title, ab.advertiser_tg_id::TEXT AS advertiser_tg_id,
+            ab.bid_per_verification, ab.remaining_budget, ab.task_text, ab.campaign_status
+     FROM advertiser_budgets ab
+     JOIN groups g ON g.group_id = ab.group_id
+     WHERE ab.advertiser_id = $1`,
+    [advertiserId],
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    advertiserId: row.advertiser_id,
+    groupId: row.group_id,
+    ownerTgId: row.owner_tg_id ? BigInt(row.owner_tg_id) : null,
+    groupTitle: row.group_title,
+    advertiserTgId: row.advertiser_tg_id ? BigInt(row.advertiser_tg_id) : null,
+    bidPerVerification: BigInt(row.bid_per_verification),
+    remainingBudget: BigInt(row.remaining_budget),
+    taskText: row.task_text,
+    campaignStatus: row.campaign_status,
+  };
+}
+
+/**
+ * Group owner accepted the campaign: pending_approval → active. Displacement (outbid
+ * notification) is computed here, at activation, inside the same transaction.
+ */
+export async function approveCampaign(
+  advertiserId: number,
+): Promise<{ ok: boolean; displacedAdvertiserTgId: bigint | null }> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query<{ group_id: number; bid_per_verification: string }>(
+      `SELECT group_id, bid_per_verification FROM advertiser_budgets
+       WHERE advertiser_id = $1 AND campaign_status = 'pending_approval' FOR UPDATE`,
+      [advertiserId],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      await client.query("ROLLBACK");
+      return { ok: false, displacedAdvertiserTgId: null };
+    }
+
+    const previous = await client.query<{ advertiser_tg_id: string | null; bid_per_verification: string }>(
+      `SELECT advertiser_tg_id, bid_per_verification FROM advertiser_budgets
+       WHERE group_id = $1 AND campaign_status = 'active' AND advertiser_id != $2
+       ORDER BY bid_per_verification DESC LIMIT 1`,
+      [row.group_id, advertiserId],
+    );
+    const prevRow = previous.rows[0];
+    const displaced =
+      prevRow?.advertiser_tg_id && BigInt(row.bid_per_verification) > BigInt(prevRow.bid_per_verification)
+        ? BigInt(prevRow.advertiser_tg_id)
+        : null;
+
+    await client.query(
+      `UPDATE advertiser_budgets
+       SET campaign_status = 'active', updated_at = NOW()
+       WHERE advertiser_id = $1`,
+      [advertiserId],
+    );
+    await client.query("COMMIT");
+    return { ok: true, displacedAdvertiserTgId: displaced };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Group owner declined the campaign: pending_approval → declined, budget zeroed.
+ * Returns the amount to refund on-chain (caller routes it via releasePayout to the
+ * advertiser's DB wallet — never refundUnusedBudget, see escrow.ts).
+ */
+export async function declineCampaign(
+  advertiserId: number,
+): Promise<{ ok: boolean; refundMicro: bigint; advertiserTgId: bigint | null }> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query<{ remaining_budget: string; advertiser_tg_id: string | null }>(
+      `SELECT remaining_budget, advertiser_tg_id::TEXT AS advertiser_tg_id FROM advertiser_budgets
+       WHERE advertiser_id = $1 AND campaign_status = 'pending_approval' FOR UPDATE`,
+      [advertiserId],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      await client.query("ROLLBACK");
+      return { ok: false, refundMicro: 0n, advertiserTgId: null };
+    }
+    const refundMicro = BigInt(row.remaining_budget);
+    await client.query(
+      `UPDATE advertiser_budgets
+       SET campaign_status = 'declined', remaining_budget = 0, updated_at = NOW()
+       WHERE advertiser_id = $1`,
+      [advertiserId],
+    );
+    await client.query("COMMIT");
+    return {
+      ok: true,
+      refundMicro,
+      advertiserTgId: row.advertiser_tg_id ? BigInt(row.advertiser_tg_id) : null,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Auto-accept campaigns the owner ignored for 48 hours (BUILD.md spec). Displacement
+ * notifications are skipped on auto-accept — acceptable edge, the ladder re-sorts on
+ * the next verification anyway.
+ */
+export async function autoAcceptStaleCampaigns(): Promise<
+  { advertiserId: number; advertiserTgId: bigint | null; groupId: number }[]
+> {
+  const res = await db.query<{
+    advertiser_id: number;
+    advertiser_tg_id: string | null;
+    group_id: number;
+  }>(
+    `UPDATE advertiser_budgets
+     SET campaign_status = 'active', updated_at = NOW()
+     WHERE campaign_status = 'pending_approval'
+       AND approval_requested_at < NOW() - INTERVAL '48 hours'
+     RETURNING advertiser_id, advertiser_tg_id::TEXT AS advertiser_tg_id, group_id`,
+  );
+  return res.rows.map((row) => ({
+    advertiserId: row.advertiser_id,
+    advertiserTgId: row.advertiser_tg_id ? BigInt(row.advertiser_tg_id) : null,
+    groupId: row.group_id,
+  }));
 }
 
 export async function expirePendingDeposits(ttlMs: number): Promise<
@@ -226,7 +383,7 @@ export async function listCampaignsForAdvertiser(advertiserTgId: bigint): Promis
      FROM advertiser_budgets ab
      JOIN groups g ON g.group_id = ab.group_id
      WHERE ab.advertiser_tg_id = $1
-       AND ab.campaign_status IN ('active', 'paused', 'pending_deposit', 'exhausted')
+       AND ab.campaign_status IN ('active', 'paused', 'pending_deposit', 'pending_approval', 'exhausted', 'declined')
      ORDER BY ab.updated_at DESC`,
     [advertiserTgId.toString()],
   );
@@ -281,7 +438,8 @@ export async function withdrawCampaign(
       [advertiserId, advertiserTgId.toString()],
     );
     const row = res.rows[0];
-    if (!row || !["active", "paused"].includes(row.campaign_status)) {
+    // pending_approval included: advertisers can cancel while awaiting owner approval.
+    if (!row || !["active", "paused", "pending_approval"].includes(row.campaign_status)) {
       await client.query("ROLLBACK");
       return { ok: false, refundMicro: 0n, groupId: null };
     }

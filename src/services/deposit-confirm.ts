@@ -7,6 +7,8 @@ import {
   getPendingTopUpById,
 } from "@/adapters/bidding.js";
 import { creditDirectDeposit, getEscrowAddress } from "@/services/escrow.js";
+import { getBot } from "@/telegram/bot.js";
+import { sendApprovalRequest } from "@/telegram/handlers/campaign-approval.js";
 import { verifyDepositSign, verifyTopUpDepositSign } from "@/utils/deposit-sign.js";
 import { logger } from "@/utils/logger.js";
 
@@ -205,5 +207,12 @@ export async function confirmCampaignDepositPay(
   if (!credited.ok || !credited.creditTxHash) return credited;
 
   await confirmCampaignDeposit(input.campaignId, credited.creditTxHash, campaign.expectedDepositMicro);
+  // Owner accept/decline gate: campaign is now 'pending_approval' — DM the owner.
+  // Never fail the deposit confirmation over a DM problem; the 48h auto-accept covers it.
+  try {
+    await sendApprovalRequest(getBot().api, input.campaignId);
+  } catch (err) {
+    logger.warn({ err, campaignId: input.campaignId }, "Approval request DM failed after Base Pay deposit");
+  }
   return credited;
 }

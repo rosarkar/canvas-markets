@@ -14,6 +14,7 @@ import {
 import { config } from "@/config/index.js";
 import { budgetDepositedEvent, CANVAS_ESCROW_ABI, creditDirectDeposit, getEscrowAddress, readUnallocatedUsdc } from "@/services/escrow.js";
 import { getBot } from "@/telegram/bot.js";
+import { sendApprovalRequest } from "@/telegram/handlers/campaign-approval.js";
 import { fromMicroUnits } from "@/utils/usdc.js";
 import { logger } from "@/utils/logger.js";
 
@@ -44,33 +45,18 @@ function formatUsd(micro: bigint): string {
   return `$${dollars.toFixed(4)}`;
 }
 
-async function notifyCampaignLive(campaign: PendingCampaign): Promise<void> {
+async function notifyCampaignPendingApproval(campaign: PendingCampaign): Promise<void> {
   if (!campaign.advertiserTgId) return;
   try {
     await getBot().api.sendMessage(
       Number(campaign.advertiserTgId),
-      `✅ **Campaign #${campaign.advertiserId} is live!**\n\n` +
-        `Deposit confirmed. Your campaign is now active and winning joins for this group.`,
+      `✅ **Deposit confirmed for campaign #${campaign.advertiserId}**\n\n` +
+        `The group owner has been asked to approve your campaign — you'll get a DM when ` +
+        `it goes live (auto-accepts within 48 hours if they don't respond).`,
       { parse_mode: "Markdown" },
     );
   } catch (err) {
     logger.warn({ err, advertiserId: campaign.advertiserId }, "Failed to DM advertiser on deposit");
-  }
-}
-
-async function notifyOutbid(
-  displacedTgId: bigint,
-  groupTitle: string,
-  bidMicro: bigint,
-): Promise<void> {
-  try {
-    await getBot().api.sendMessage(
-      Number(displacedTgId),
-      `You've been outbid in **${groupTitle}**. New top bid: ${formatUsd(bidMicro)}. Send /buy to rebid.`,
-      { parse_mode: "Markdown" },
-    );
-  } catch {
-    /* advertiser may have blocked bot */
   }
 }
 
@@ -109,18 +95,13 @@ async function processDepositLog(
     const result = await confirmCampaignDeposit(campaignId, txHash, amount);
     if (!result.confirmed) return;
 
-    logger.info({ campaignId, txHash, amount: amount.toString() }, "Campaign deposit confirmed");
+    logger.info({ campaignId, txHash, amount: amount.toString() }, "Campaign deposit confirmed — pending owner approval");
 
     const updated = await getPendingCampaignById(campaignId);
-    if (updated) await notifyCampaignLive(updated);
-
-    if (result.displacedAdvertiserTgId && updated) {
-      await notifyOutbid(
-        result.displacedAdvertiserTgId,
-        `Group #${updated.groupId}`,
-        updated.bidPerVerification,
-      );
-    }
+    if (updated) await notifyCampaignPendingApproval(updated);
+    // Owner accept/decline gate — outbid notification now happens at activation
+    // (approveCampaign), not at deposit time.
+    await sendApprovalRequest(getBot().api, campaignId);
     return;
   }
 
@@ -191,8 +172,12 @@ async function recoverFailedPaymentCredits(): Promise<void> {
 
     logger.info({ campaignId: row.campaign_id, txHash }, "Recovered failed Base Pay credit");
 
-    const updated = await getPendingCampaignById(row.campaign_id);
-    if (updated) await notifyCampaignLive(updated);
+    // Recovered deposits enter the same owner accept/decline gate as the main path.
+    try {
+      await sendApprovalRequest(getBot().api, row.campaign_id);
+    } catch (err) {
+      logger.warn({ err, campaignId: row.campaign_id }, "Approval request DM failed after recovered credit");
+    }
   }
 }
 

@@ -19,9 +19,10 @@ import { logger } from "@/utils/logger.js";
 const pendingWithdraw = new Map<number, number>();
 
 function withdrawableCampaigns(rows: AdvertiserCampaignRow[]): AdvertiserCampaignRow[] {
+  // pending_approval included: advertisers can cancel while awaiting owner approval.
   return rows.filter(
     (c) =>
-      ["active", "paused"].includes(c.campaignStatus) && c.remainingBudget > 0n,
+      ["active", "paused", "pending_approval"].includes(c.campaignStatus) && c.remainingBudget > 0n,
   );
 }
 

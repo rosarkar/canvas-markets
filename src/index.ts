@@ -12,6 +12,7 @@ import { previewIds, sendAdminAlert } from "@/services/admin-alerts.js";
 import { startDepositMonitor } from "@/services/deposit-monitor.js";
 import { startPayoutBatchScheduler } from "@/services/payout-batch.js";
 import { getBot, startTelegramBot } from "@/telegram/bot.js";
+import { runAutoAcceptSweep } from "@/telegram/handlers/campaign-approval.js";
 import {
   completeVerificationPass,
   completeVerificationTimeout,
@@ -110,6 +111,13 @@ async function main(): Promise<void> {
       })
       .catch((err) => logger.error({ err }, "Rules-pending TTL sweep failed"));
   }, 60_000);
+
+  // Auto-accept campaigns the group owner ignored for 48h (hourly is plenty).
+  setInterval(() => {
+    runAutoAcceptSweep(getBot().api).catch((err) =>
+      logger.error({ err }, "Campaign auto-accept sweep failed"),
+    );
+  }, 3_600_000);
 
   logger.info("Canvas AI started");
   console.log("[canvas-ai] started — webhook mode, Rose-style captcha enabled");

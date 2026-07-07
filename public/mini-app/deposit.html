@@ -102,7 +102,7 @@
       });
       const data = await res.json();
       if (data.ok) {
-        showStatus("✅ Deposit confirmed! Return to Telegram — your campaign is live.", true);
+        showStatus("✅ Deposit confirmed! Return to Telegram — the group owner has been asked to approve your campaign (auto-accepts within 48h).", true);
       } else if (data.error?.includes("pending")) {
         showStatus(data.error, false);
         setTimeout(() => confirmPayment(paymentId), 20_000);

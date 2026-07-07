@@ -78,6 +78,10 @@ export async function createCanvasTables(): Promise<void> {
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS portal_invite_link TEXT;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_title TEXT;
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS rules JSONB NOT NULL DEFAULT '[]'::jsonb;
+      -- Owner accept/decline gate: when the approval request was DM'd to the group
+      -- owner (campaigns auto-accept 48h after this timestamp).
+      ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS approval_requested_at TIMESTAMPTZ;
+
       -- registered_at was defined inside CREATE TABLE IF NOT EXISTS, which Postgres skips
       -- when the table already exists — the live DB never got the column (BUILD.md issue).
       ALTER TABLE groups ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;

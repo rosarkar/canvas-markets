@@ -8,6 +8,7 @@ import { config } from "@/config/index.js";
 import { registerAdmissionCallbackHandler } from "@/telegram/handlers/admission-callback.js";
 import { registerBotMembershipHandler } from "@/telegram/handlers/bot-membership.js";
 import { registerBuyHandler } from "@/telegram/handlers/buy.js";
+import { registerCampaignApprovalHandler } from "@/telegram/handlers/campaign-approval.js";
 import { registerCampaignHandlers } from "@/telegram/handlers/campaigns.js";
 import { registerCaptchaCallbackHandler } from "@/telegram/handlers/captcha-callback.js";
 import { registerJoinHandler } from "@/telegram/handlers/join.js";
@@ -39,6 +40,7 @@ export function startTelegramBot(): void {
   registerRegisterHandler(bot);
   registerBuyHandler(bot);
   registerCampaignHandlers(bot);
+  registerCampaignApprovalHandler(bot);
   registerLinkHandler(bot);
   registerJoinHandler(bot);
   registerJoinRequestHandler(bot);

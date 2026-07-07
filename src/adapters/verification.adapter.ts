@@ -243,7 +243,9 @@ export async function hasRecentGroupAttempt(
     `SELECT 1 FROM verifications
      WHERE tg_user_id = $1
        AND group_id = $2
-       AND state <> 'COOLDOWN_REJECTED'
+       -- COOLDOWN_REJECTED: knocking can't extend the window.
+       -- SCORING_UNAVAILABLE: Kimi outage wasn't the user's attempt — retry freely.
+       AND state NOT IN ('COOLDOWN_REJECTED', 'SCORING_UNAVAILABLE')
        AND created_at > NOW() - INTERVAL '${GROUP_ATTEMPT_WINDOW}'
      LIMIT 1`,
     [tgUserId.toString(), groupId],

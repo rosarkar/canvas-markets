@@ -167,3 +167,33 @@ export async function completeVerificationTimeout(
     );
   } catch { /* user may have blocked the bot */ }
 }
+
+/**
+ * Scoring retry queue exhausted — our outage, not the user's answer. Same exit
+ * mechanics as a timeout (decline/kick so they aren't stuck muted) but honest copy
+ * and NO cooldown: SCORING_UNAVAILABLE is excluded from both the cooldown states
+ * and the 12h attempt window, so they can retry the moment scoring recovers.
+ */
+export async function completeVerificationScoringUnavailable(
+  api: Api,
+  entryType: string,
+  group: GroupRow,
+  tgUserId: bigint,
+): Promise<void> {
+  const chatId = Number(group.tgGroupId);
+  const userId = Number(tgUserId);
+  const groupTitle = group.groupTitle ?? "the group";
+  const apology =
+    `⚠️ We hit a technical issue on our side and couldn't score your response for **${groupTitle}**. ` +
+    `This was not a failed verification — please try joining again in a little while.`;
+
+  if (entryType === "join_request") {
+    await declineJoinRequest(api, chatId, userId);
+  } else {
+    await rejectUser(api, chatId, userId);
+    await deleteWelcomeGateMessage(api, chatId, group.groupId);
+  }
+  try {
+    await api.sendMessage(userId, apology, { parse_mode: "Markdown" });
+  } catch { /* user may have blocked the bot */ }
+}

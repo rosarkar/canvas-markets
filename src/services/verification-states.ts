@@ -24,6 +24,12 @@ export const VerificationState = {
    * payout, and active-verification queries (all filter on explicit state lists).
    */
   COOLDOWN_REJECTED: "COOLDOWN_REJECTED",
+  /**
+   * Scoring retry queue exhausted — Kimi was unreachable, not the user's fault.
+   * Terminal, sets NO cooldown, and is excluded from the 12h attempt-window check
+   * so the user can retry as soon as scoring recovers.
+   */
+  SCORING_UNAVAILABLE: "SCORING_UNAVAILABLE",
 } as const;
 
 export type VerificationState = (typeof VerificationState)[keyof typeof VerificationState];

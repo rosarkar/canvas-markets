@@ -1,7 +1,8 @@
 import type { Api } from "grammy";
 
 import { db } from "@/db.js";
-import { getVerificationByToken } from "@/adapters/verification.adapter.js";
+import { getGroupById } from "@/adapters/groups.adapter.js";
+import { getVerificationByToken, transitionState } from "@/adapters/verification.adapter.js";
 import { sendAdminAlert } from "@/services/admin-alerts.js";
 import { scoreWithKimi } from "@/services/scoring.js";
 import { VerificationState } from "@/services/verification-states.js";
@@ -9,6 +10,7 @@ import {
   buildScoringPrompt,
   completeScoredVerification,
 } from "@/telegram/services/process-text-response.js";
+import { completeVerificationScoringUnavailable } from "@/telegram/services/verification-complete.js";
 import { logger } from "@/utils/logger.js";
 
 /** Sweep retries at ~2-minute spacing; exhausted after ~10 minutes of Kimi outage. */
@@ -52,11 +54,21 @@ export async function retryDeferredScoring(api: Api): Promise<void> {
     }
 
     if (row.scoring_retries + 1 >= MAX_SCORING_RETRIES) {
-      // Kimi unreachable across the whole retry window — fail closed for real.
-      await completeScoredVerification(api, verification, { score: 0, method: "fail_closed" });
+      // Kimi unreachable across the whole retry window. This is our outage, not the
+      // user's answer: exit via SCORING_UNAVAILABLE (no cooldown, exempt from the 12h
+      // window) so they can retry as soon as scoring recovers.
+      const marked = await transitionState(row.verification_id, VerificationState.SCORING_UNAVAILABLE, {
+        expectedState: VerificationState.SCORING,
+      });
+      if (!marked) continue;
+      const group = await getGroupById(verification.groupId);
+      if (group) {
+        await completeVerificationScoringUnavailable(api, verification.entryType, group, verification.tgUserId);
+      }
       await sendAdminAlert(
-        `Scoring retry queue exhausted — verification ${row.verification_id.slice(0, 8)}… failed closed ` +
-          `after ${MAX_SCORING_RETRIES} Kimi retries. Check Kimi/API status.`,
+        `Scoring retry queue exhausted — verification ${row.verification_id.slice(0, 8)}… closed as ` +
+          `SCORING_UNAVAILABLE after ${MAX_SCORING_RETRIES} Kimi retries. User was NOT penalized ` +
+          `(no cooldown — free to retry). Check Kimi/API status.`,
         api,
       );
       continue;

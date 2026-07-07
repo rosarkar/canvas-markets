@@ -6,6 +6,7 @@ import {
   getActiveVerificationForUser,
   getRecentlyPassedVerification,
   hasPassedVerification,
+  hasRecentGlobalAttempt,
   isUserInCooldown,
 } from "@/adapters/verification.adapter.js";
 import { beginVerification } from "@/telegram/services/begin-verification.js";
@@ -48,6 +49,16 @@ export async function handleMemberJoin(
 
   if (await isUserInCooldown(tgUserId, group.groupId)) {
     logger.info({ tgUserId: tgUserId.toString(), groupId: group.groupId }, "Join rejected — cooldown");
+    await rejectUser(api, chatId, tgUserId);
+    return;
+  }
+
+  // Global rate limit: one verification attempt per handle per 12h across all groups.
+  if (await hasRecentGlobalAttempt(tgUserId, group.groupId)) {
+    logger.info(
+      { tgUserId: tgUserId.toString(), groupId: group.groupId },
+      "Join rejected — global 12h attempt limit",
+    );
     await rejectUser(api, chatId, tgUserId);
     return;
   }

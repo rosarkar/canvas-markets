@@ -135,6 +135,10 @@ export async function createCanvasTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_verifications_payout_pending
         ON verifications (payout_status) WHERE payout_status = 'pending';
 
+      -- Global 12h rate-limit check on join intercept (hasRecentGlobalAttempt).
+      CREATE INDEX IF NOT EXISTS idx_verifications_user_created
+        ON verifications (tg_user_id, created_at DESC);
+
       CREATE TABLE IF NOT EXISTS payment_credits (
         payment_id     TEXT PRIMARY KEY,
         campaign_id    INT NOT NULL REFERENCES advertiser_budgets(advertiser_id),

@@ -4,6 +4,7 @@ import { getGroupByTgId } from "@/adapters/groups.adapter.js";
 import {
   getActiveVerificationForUser,
   hasPassedVerification,
+  hasRecentGlobalAttempt,
   isUserInCooldown,
 } from "@/adapters/verification.adapter.js";
 import { beginVerification } from "@/telegram/services/begin-verification.js";
@@ -37,6 +38,16 @@ export function registerJoinRequestHandler(bot: Bot): void {
     }
 
     if (await isUserInCooldown(tgUserId, group.groupId)) {
+      await declineJoinRequest(ctx.api, chat.id, user.id);
+      return;
+    }
+
+    // Global rate limit: one verification attempt per handle per 12h across all groups.
+    if (await hasRecentGlobalAttempt(tgUserId, group.groupId)) {
+      logger.info(
+        { tgUserId: tgUserId.toString(), groupId: group.groupId },
+        "Join request declined — global 12h attempt limit",
+      );
       await declineJoinRequest(ctx.api, chat.id, user.id);
       return;
     }

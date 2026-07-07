@@ -226,6 +226,30 @@ export async function hasPassedVerification(
   return res.rows.length > 0;
 }
 
+/** Global rate limit window: one verification attempt per Telegram user across all groups. */
+const GLOBAL_ATTEMPT_WINDOW = "12 hours";
+
+/**
+ * True if the user started a verification in any OTHER group within the window.
+ * Same-group retries are excluded — they're governed by the per-group cooldown and
+ * active-verification resume logic. This blocks the bot-farm pattern of cycling one
+ * handle across many groups in quick succession.
+ */
+export async function hasRecentGlobalAttempt(
+  tgUserId: bigint,
+  excludeGroupId: number,
+): Promise<boolean> {
+  const res = await db.query(
+    `SELECT 1 FROM verifications
+     WHERE tg_user_id = $1
+       AND group_id <> $2
+       AND created_at > NOW() - INTERVAL '${GLOBAL_ATTEMPT_WINDOW}'
+     LIMIT 1`,
+    [tgUserId.toString(), excludeGroupId],
+  );
+  return res.rows.length > 0;
+}
+
 export interface ExpiredVerification {
   verificationId: string;
   tgUserId: bigint;

@@ -150,7 +150,7 @@ export async function completeVerificationTimeout(
     try {
       await api.sendMessage(
         userId,
-        `⏳ Your verification for **${groupTitle}** timed out. You're welcome to request to join again.`,
+        `⏳ Your verification for **${groupTitle}** timed out. You can try again in 24 hours.`,
         { parse_mode: "Markdown" },
       );
     } catch { /* user may have blocked the bot */ }
@@ -162,7 +162,7 @@ export async function completeVerificationTimeout(
   try {
     await api.sendMessage(
       userId,
-      `⏳ Your verification for **${groupTitle}** timed out. Feel free to try joining again.`,
+      `⏳ Your verification for **${groupTitle}** timed out. You can try again in 24 hours.`,
       { parse_mode: "Markdown" },
     );
   } catch { /* user may have blocked the bot */ }

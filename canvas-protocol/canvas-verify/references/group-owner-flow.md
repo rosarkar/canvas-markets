@@ -2,7 +2,7 @@
 
 ## 1. Register
 
-1. Add `@CanvasProtocolBot` to the Telegram group as **admin** with at least: invite users via link, restrict members, delete messages.
+1. Add `@CanvasVerificationBot` to the Telegram group as **admin** with at least: invite users via link, restrict members, delete messages.
 2. Run `/register` in the group. The rest of the flow moves to DM: set a payout wallet (`/wallet 0xAddress`, Base address) and optionally group rules (one per line; shown to new members post-verification) and a custom verification question.
 3. The group chat gets one public confirmation line; the bot DMs the owner a **portal invite link** to share — joins through it are interceptable even in groups where open joining wouldn't be.
 

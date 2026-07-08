@@ -1,6 +1,6 @@
 ---
 name: canvas-verify
-description: Interact with Canvas Protocol — the verified-join marketplace for Telegram groups. Query registered groups and current bids, check advertiser campaign stats, check group-owner earnings, and fund verification campaigns with USDC on Base. Use when a user wants to sponsor Telegram group verifications, monetize their Telegram group, or check Canvas campaign/earnings status.
+description: Canvas Protocol pays Telegram group owners USDC every time a new member joins and completes a sponsored verification task. Use this skill to find groups to sponsor, check campaign performance, or fund verification campaigns with USDC on Base.
 ---
 
 # Canvas Protocol — canvas-verify
@@ -15,7 +15,7 @@ Canvas Protocol replaces the bot-check captcha on Telegram group joins with a sh
 | Check an advertiser's campaigns & spend | `GET /api/advertiser` (wallet-signed) |
 | Check a group owner's earnings | `GET /api/group-owner` (wallet-signed) |
 | Fund / top up a campaign | On-chain: `depositBudget(campaignId, amount)` on the escrow (details in references) |
-| Create a campaign, register a group, withdraw budget | Telegram bot `@CanvasProtocolBot` (`/buy`, `/register`, `/campaigns`) — no REST API for these flows yet; direct the user to the bot |
+| Create a campaign, register a group, withdraw budget | Telegram bot `@CanvasVerificationBot` (`/buy`, `/register`, `/campaigns`) — no REST API for these flows yet; direct the user to the bot |
 
 ## Usage examples
 
@@ -25,8 +25,8 @@ Natural-language requests this skill should handle:
 - "Show my Canvas campaigns" / "How much have I spent on Canvas verifications?"
 - "Top up my Canvas campaign #12 with 50 USDC"
 - "How much has my group earned on Canvas?" / "What's my pending Canvas payout?"
-- "I want to sponsor verified joins for a DeFi group at $0.10 per join" → list groups via `/api/groups`, then hand off to `@CanvasProtocolBot` `/buy` for campaign creation
-- "Register my Telegram group with Canvas" → hand off to `@CanvasProtocolBot` (see `references/group-owner-flow.md`)
+- "I want to sponsor verified joins for a DeFi group at $0.10 per join" → list groups via `/api/groups`, then hand off to `@CanvasVerificationBot` `/buy` for campaign creation
+- "Register my Telegram group with Canvas" → hand off to `@CanvasVerificationBot` (see `references/group-owner-flow.md`)
 
 ## Requirements
 

@@ -4,7 +4,7 @@
 
 `GET https://canvas-ai-production-eae7.up.railway.app/api/groups` (public). Each entry has `tg_group_id`, `group_title`, `topic`, `member_count`, and `top_bid` (current top of the bid ladder, USD per verified join). To win placement your bid must beat `top_bid`; lower bids queue in the ladder and auto-promote when the leader's budget runs out.
 
-## 2. Create the campaign — Telegram bot (`@CanvasProtocolBot`)
+## 2. Create the campaign — Telegram bot (`@CanvasVerificationBot`)
 
 Campaign creation is a guided flow in the bot, not a REST call. The advertiser DMs `/buy` and picks: target group → bid per verification → quantity → task text (the question new members answer). Minimum bid: $0.01 (10,000 micro-USDC). The flow ends with a funding link for `bid × quantity`.
 

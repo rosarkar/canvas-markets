@@ -456,4 +456,17 @@ Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live reve
 
 ---
 
+## Post-Launch TODOs (July 13 2026)
+
+### 1. SCORING-state stranding sweep
+If anything throws between a verification entering SCORING state and the final state transition, the row gets stuck in SCORING permanently with the user muted. The TTL sweep does not cover SCORING or RESPONSE_RECEIVED states. Fix: extend the TTL sweep in the existing recovery job to include both states, transitioning them to TIMED_OUT after a threshold (suggest 10 minutes). Reference: `src/telegram/services/process-text-response.ts:74`.
+
+### 2. KIMI_MODEL missing from .env.example
+`KIMI_MODEL` is read from env in `src/services/scoring.ts` and defaults to `moonshot-v1-8k` if absent, but it is not documented in `.env.example`. Add it with the default value and a comment explaining it controls the Kimi inference model used for response scoring.
+
+### 3. campaignDepositor guard on V1 contract path
+There is a known TODO at `src/telegram/handlers/campaigns.ts:338` flagging that the V1 contract path does not enforce the `campaignDepositor` guard. This is acceptable for the current whitelisted phase but must be resolved before going permissionless. Log it here as a pre-permissionless blocker.
+
+---
+
 *Canvas Protocol · BUILD.md · confidential*

@@ -4,7 +4,8 @@
   ],
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
-    { "source": "/advertiser", "destination": "/advertiser/index.html" },
-    { "source": "/group-owner", "destination": "/group-owner/index.html" }
+    { "source": "/group-owners", "destination": "/group-owners.html" },
+    { "source": "/advertisers", "destination": "/advertisers.html" },
+    { "source": "/about", "destination": "/about.html" }
   ]
 }

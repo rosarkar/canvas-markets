@@ -73,20 +73,12 @@ export async function beginVerification(
     sendVerificationTaskDm(api, user.id, verification.verificationId, task, groupTitle);
 
   const me = await api.getMe();
-  const botUsername = me.username ?? "CanvasProtocolBot";
+  const botUsername = me.username ?? "CanvasVerificationBot";
   let captchaSentInDm = false;
 
   if (entryType === "open_join") {
     await restrictUserForCaptcha(api, group.tgGroupId, user.id);
-    await sendWelcomeGateMessage(
-      api,
-      Number(group.tgGroupId),
-      group.groupId,
-      user.first_name,
-      groupTitle,
-      verification.verificationId,
-      botUsername,
-    );
+    await sendWelcomeGateMessage(api, Number(group.tgGroupId), group.groupId);
     captchaSentInDm = await sendTaskDm();
     if (!captchaSentInDm) {
       await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);

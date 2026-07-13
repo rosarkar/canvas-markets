@@ -1,5 +1,4 @@
 import type { Api } from "grammy";
-import { InlineKeyboard } from "grammy";
 
 import {
   getGroupById,
@@ -26,21 +25,13 @@ export async function sendWelcomeGateMessage(
   api: Api,
   chatId: number,
   groupId: number,
-  userFirstName: string,
-  groupTitle: string,
-  verificationId: string,
-  botUsername: string,
 ): Promise<number | null> {
   await deletePreviousWelcome(api, chatId, groupId);
-
-  const deepLink = `https://t.me/${botUsername}?start=verify_${verificationId}`;
-  const keyboard = new InlineKeyboard().url("Verify to join →", deepLink);
 
   try {
     const msg = await api.sendMessage(
       chatId,
-      `👋 Hey ${userFirstName}! **${groupTitle}** requires a quick verification before you can chat.\n\nTap below — takes about 30 seconds.`,
-      { reply_markup: keyboard, parse_mode: "Markdown" },
+      `A new member is completing verification.`,
     );
     await updateLastWelcomeMessageId(groupId, msg.message_id);
     return msg.message_id;

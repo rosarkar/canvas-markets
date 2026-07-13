@@ -118,7 +118,7 @@ export async function createCanvasTables(): Promise<void> {
 
       ALTER TABLE advertiser_budgets DROP CONSTRAINT IF EXISTS advertiser_budgets_campaign_status_check;
       ALTER TABLE advertiser_budgets ADD CONSTRAINT advertiser_budgets_campaign_status_check
-        CHECK (campaign_status IN ('active', 'paused', 'exhausted', 'expired', 'pending_deposit', 'withdrawn'));
+        CHECK (campaign_status IN ('active', 'paused', 'exhausted', 'expired', 'pending_deposit', 'pending_approval', 'withdrawn'));
 
       ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS paused_at TIMESTAMPTZ;
       ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;

@@ -31,6 +31,11 @@
     <div class="amount" id="amount-display">—</div>
     <p class="muted">One-tap pay with your Base Account. Gas sponsored.</p>
     <button id="pay-btn" type="button">Pay with Base</button>
+    <div id="tg-fallback" style="display:none; margin-top:12px;">
+      <div class="muted" style="word-break:break-all; background:#0a0a0a; border-radius:8px; padding:10px; font-size:0.75rem;" id="page-url"></div>
+      <button id="copy-link-btn" type="button" style="background:#262626;">Copy link</button>
+      <p class="muted" style="font-size:0.75rem;">Open this link in your browser to complete payment.</p>
+    </div>
     <div id="status" class="status" style="display:none"></div>
   </div>
 
@@ -112,22 +117,48 @@
       }
     }
 
-    payBtn.addEventListener("click", async () => {
-      if (!BASE_PAY_ENABLED) return;
-      if (!campaignId || !amountMicro) return;
-      payBtn.disabled = true;
-      showStatus("Opening Base Pay…", true);
+    // Telegram's in-app browser blocks the Base Pay popup (window.opener is
+    // inaccessible), so route those users out to a real browser instead.
+    const isTelegramBrowser =
+      /Telegram/i.test(navigator.userAgent) || typeof window.TelegramWebviewProxy !== "undefined";
 
-      try {
-        await loadConfig();
-        const usdAmount = microToUsd(amountMicro);
-        const payment = await pay({ amount: usdAmount, to: escrowAddress });
-        await confirmPayment(payment.id);
-      } catch (err) {
-        showStatus(err?.message || "Payment failed or was cancelled.", false);
-        payBtn.disabled = false;
-      }
-    });
+    if (isTelegramBrowser) {
+      payBtn.textContent = "Open payment page";
+      payBtn.addEventListener("click", () => {
+        if (window.Telegram?.WebApp?.openLink) {
+          window.Telegram.WebApp.openLink(window.location.href);
+          return;
+        }
+        const fallback = document.getElementById("tg-fallback");
+        document.getElementById("page-url").textContent = window.location.href;
+        fallback.style.display = "block";
+      });
+      document.getElementById("copy-link-btn").addEventListener("click", async (e) => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          e.target.textContent = "Copied";
+        } catch {
+          /* clipboard unavailable — URL is displayed for manual copy */
+        }
+      });
+    } else {
+      payBtn.addEventListener("click", async () => {
+        if (!BASE_PAY_ENABLED) return;
+        if (!campaignId || !amountMicro) return;
+        payBtn.disabled = true;
+        showStatus("Opening Base Pay…", true);
+
+        try {
+          await loadConfig();
+          const usdAmount = microToUsd(amountMicro);
+          const payment = await pay({ amount: usdAmount, to: escrowAddress });
+          await confirmPayment(payment.id);
+        } catch (err) {
+          showStatus(err?.message || "Payment failed or was cancelled.", false);
+          payBtn.disabled = false;
+        }
+      });
+    }
 
     loadConfig().catch(() => showStatus("Could not load escrow config.", false));
   </script>

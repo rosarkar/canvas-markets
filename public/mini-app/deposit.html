@@ -20,6 +20,12 @@
     .status { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.875rem; }
     .ok { background: #052e16; color: #86efac; }
     .err { background: #450a0a; color: #fca5a5; }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px; margin-right: 8px;
+      border: 2px solid #86efac; border-top-color: transparent; border-radius: 50%;
+      vertical-align: -2px; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -58,10 +64,41 @@
     // crediting path ever breaks.
     const BASE_PAY_ENABLED = true;
 
-    function showStatus(msg, ok) {
+    function showStatus(msg, ok, spinner) {
       statusEl.style.display = "block";
       statusEl.className = "status " + (ok ? "ok" : "err");
       statusEl.textContent = msg;
+      if (spinner) {
+        const spin = document.createElement("span");
+        spin.className = "spinner";
+        statusEl.prepend(spin);
+      }
+    }
+
+    // Refresh persistence: if the page reloads while a payment is confirming,
+    // resume polling instead of losing the session. The paymentId only exists
+    // once pay() resolves, so that's the earliest point it can be persisted.
+    const PENDING_KEY = "canvas_payment_pending";
+
+    function setPendingPayment(paymentId) {
+      try {
+        sessionStorage.setItem(PENDING_KEY, JSON.stringify({ paymentId, campaignId }));
+      } catch { /* sessionStorage unavailable */ }
+    }
+
+    function clearPendingPayment() {
+      try { sessionStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
+    }
+
+    function getPendingPayment() {
+      try {
+        const raw = sessionStorage.getItem(PENDING_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && parsed.paymentId && parsed.campaignId === campaignId ? parsed : null;
+      } catch {
+        return null;
+      }
     }
 
     function microToUsd(micro) {
@@ -91,8 +128,8 @@
       escrowAddress = data.escrowAddress;
     }
 
-    async function confirmPayment(paymentId) {
-      showStatus("Confirming deposit…", true);
+    async function confirmPayment(paymentId, retryMs = 20_000, quiet = false) {
+      if (!quiet) showStatus("Confirming deposit…", true);
       const res = await fetch("/api/deposit/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,11 +144,13 @@
       });
       const data = await res.json();
       if (data.ok) {
+        clearPendingPayment();
         showStatus("✅ Deposit confirmed! Return to Telegram — the group owner has been asked to approve your campaign (auto-accepts within 48h).", true);
       } else if (data.error?.includes("pending")) {
-        showStatus(data.error, false);
-        setTimeout(() => confirmPayment(paymentId), 20_000);
+        if (!quiet) showStatus(data.error, false);
+        setTimeout(() => confirmPayment(paymentId, retryMs, quiet), retryMs);
       } else {
+        clearPendingPayment();
         showStatus(data.error || "Confirmation failed.", false);
         payBtn.disabled = false;
       }
@@ -152,6 +191,7 @@
           await loadConfig();
           const usdAmount = microToUsd(amountMicro);
           const payment = await pay({ amount: usdAmount, to: escrowAddress });
+          setPendingPayment(payment.id);
           await confirmPayment(payment.id);
         } catch (err) {
           showStatus(err?.message || "Payment failed or was cancelled.", false);
@@ -161,6 +201,14 @@
     }
 
     loadConfig().catch(() => showStatus("Could not load escrow config.", false));
+
+    // Resume an interrupted confirmation after a refresh.
+    const pendingPayment = getPendingPayment();
+    if (pendingPayment) {
+      payBtn.disabled = true;
+      showStatus("Your payment is being confirmed. This page will update automatically.", true, true);
+      confirmPayment(pendingPayment.paymentId, 3_000, true);
+    }
   </script>
 </body>
 </html>

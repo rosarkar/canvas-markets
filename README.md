@@ -8,7 +8,7 @@ Canvas replaces the useless bot-check captcha on Telegram group joins with a sho
 |---|---|
 | Repo (source of truth, auto-deploys `main`) | `rosarkar/canvas-ai` |
 | Railway service | `https://canvas-ai-production-eae7.up.railway.app` (project `30c2e333-…`, + Postgres) |
-| Bot | `@CanvasProtocolBot` (webhook mode, path `/telegram/webhook`) |
+| Bot | `@CanvasVerificationBot` (webhook mode, path `/telegram/webhook`) |
 | Escrow contract (Base mainnet, verified on Basescan, first-depositor guard) | `0xf808b264E13Bf809C8e86afaF4e14c200931101E` |
 | Relayer (only address that can move escrow funds) | `0xbD5f911E8621Ec144681d17a8b59DcDd3f9356d9` |
 | Deprecated — do not use | `fweekshow/canvas-ai` repo; escrows `0x262a…5890` (partial bytecode) and `0x13aA…561B` (pre-guard) |
@@ -17,14 +17,14 @@ Canvas replaces the useless bot-check captcha on Telegram group joins with a sho
 
 | Layer | Choice |
 |---|---|
-| Runtime | Node 20+, TypeScript (strict, ESM, `@/` path aliases), `tsx` in dev |
+| Runtime | Node 21+ (`engines: >=21 <24`), TypeScript (strict, ESM, `@/` path aliases), `tsx` in dev |
 | Bot | grammY (webhook mode behind Express) |
 | HTTP | Express — bot webhook, `/health`, read APIs, static dashboards + mini-app |
 | Database | Postgres via `pg`, no ORM; schema applied at boot (`CREATE TABLE / ADD COLUMN IF NOT EXISTS` in `src/adapters/schema.ts`) |
 | Chain | viem on Base mainnet (escrow reads/writes, wallet-signature auth) |
 | Contracts | Solidity 0.8.20, Foundry (`forge test`; forge-std via git submodule) |
 | Scoring | Kimi (Moonshot) chat completions, temperature 0, fail-closed + retry queue |
-| Deploy | Railway, auto-deploy on push to `main`; Dockerfile two-stage build |
+| Deploy | Backend/bot on Railway, auto-deploy on push to `main` (Dockerfile two-stage). The static marketing site + dashboards + mini-app in `public/` are served by Vercel at `canvas-protocol.com` (see `vercel.json`) |
 | Tests | vitest (`src/**/*.test.ts`) + Foundry tests (`test/*.t.sol`) |
 
 ## Run locally

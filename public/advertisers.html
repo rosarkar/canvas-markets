@@ -4,6 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Canvas — For advertisers</title>
+<meta name="description" content="Reach verified, context-matched humans at the moment they join a community. Pay per verified completion, scored by AI, settled on Base — for RLHF data or warm leads.">
+<link rel="canonical" href="https://canvas-protocol.com/advertisers">
+<meta name="theme-color" content="#08080B">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Canvas Protocol">
+<meta property="og:title" content="Canvas for advertisers — pay for verified humans">
+<meta property="og:description" content="Reach verified, context-matched humans at the moment they join a community. Pay per verified completion, scored by AI, settled on Base — for RLHF data or warm leads.">
+<meta property="og:url" content="https://canvas-protocol.com/advertisers">
+<meta property="og:image" content="https://canvas-protocol.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Canvas for advertisers — pay for verified humans">
+<meta name="twitter:description" content="Reach verified, context-matched humans at the moment they join a community. Pay per verified completion, scored by AI, settled on Base — for RLHF data or warm leads.">
+<meta name="twitter:image" content="https://canvas-protocol.com/og.png">
+<meta name="twitter:site" content="@Canvas_Protocol">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600;1,700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -147,15 +165,38 @@ footer { border-top: 1px solid var(--border); padding: 44px 56px; }
   .cta-section { padding: 88px 24px; }
   footer { padding: 40px 24px; }
 }
+
+/* Accessibility + mobile navigation */
+.skip-link { position:absolute; left:-9999px; top:0; z-index:500; background:var(--accent); color:#08080B; padding:10px 16px; border-radius:0 0 6px 0; font-size:13px; font-weight:600; text-decoration:none; }
+.skip-link:focus { left:0; }
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible, input:focus-visible, [role="button"]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:3px; }
+.nav-toggle { display:none; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; width:42px; height:38px; cursor:pointer; align-items:center; justify-content:center; flex-direction:column; gap:4px; }
+.nav-toggle span { display:block; width:20px; height:2px; border-radius:2px; background:var(--text); transition:transform .2s ease, opacity .2s ease; }
+nav.nav-open .nav-toggle span:nth-child(1) { transform:translateY(6px) rotate(45deg); }
+nav.nav-open .nav-toggle span:nth-child(2) { opacity:0; }
+nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-45deg); }
+.nav-collapse { display:contents; }
+@media (max-width: 960px) {
+  .nav-toggle { display:inline-flex; }
+  .nav-collapse { display:none; position:absolute; top:60px; left:0; right:0; flex-direction:column; align-items:stretch; gap:0; background:rgba(8,8,11,0.98); border-bottom:1px solid var(--border); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); padding:8px 24px 20px; }
+  nav.nav-open .nav-collapse { display:flex; }
+  .nav-collapse .nav-links { position:static; transform:none; left:auto; display:flex; flex-direction:column; gap:0; }
+  .nav-collapse .nav-links a { display:block; padding:13px 0; border-bottom:1px solid var(--border); font-size:15px; }
+  .nav-collapse .nav-actions { flex-direction:column; align-items:stretch; gap:12px; margin-top:16px; }
+  .nav-collapse .nav-actions .btn-nav { justify-content:center; padding:12px; }
+  .nav-collapse .nav-contact { padding:4px 0; }
+}
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 
 
-<nav>
+<nav aria-label="Primary">
   <a href="/" class="nav-logo">Canvas</a>
-  <ul class="nav-links">
+  <div class="nav-collapse" id="nav-menu">
+    <ul class="nav-links">
     <li><a href="/group-owners">Group Owners</a></li>
     <li><a href="/advertisers" class="active">Advertisers</a></li>
     <li><a href="/about">About</a></li>
@@ -165,7 +206,10 @@ footer { border-top: 1px solid var(--border); padding: 44px 56px; }
     <a href="mailto:hello@canvasprotocol.xyz" class="nav-contact">Contact</a>
     <a href="mailto:hello@canvasprotocol.xyz" class="btn-nav">Start a campaign →</a>
   </div>
+    </div>
+    <button class="nav-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-menu"><span></span><span></span><span></span></button>
 </nav>
+<a id="main" tabindex="-1"></a>
 
 <!-- HERO -->
 <section class="page-hero">
@@ -387,5 +431,20 @@ footer { border-top: 1px solid var(--border); padding: 44px 56px; }
     <span class="footer-copy">© 2026 Canvas Protocol</span>
   </div>
 </footer>
+
+<script>
+(function(){
+  var nav=document.querySelector('nav');
+  var btn=nav&&nav.querySelector('.nav-toggle');
+  if(!nav||!btn)return;
+  btn.addEventListener('click',function(){
+    var open=nav.classList.toggle('nav-open');
+    btn.setAttribute('aria-expanded',open?'true':'false');
+  });
+  nav.querySelectorAll('.nav-collapse a').forEach(function(a){
+    a.addEventListener('click',function(){nav.classList.remove('nav-open');btn.setAttribute('aria-expanded','false');});
+  });
+})();
+</script>
 </body>
 </html>

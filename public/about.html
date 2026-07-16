@@ -3,25 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Canvas — About</title>
-<meta name="description" content="Canvas prices human attention fairly: a verification marketplace on Telegram group joins, settling USDC on Base. Meet the team and the mission behind the protocol.">
-<link rel="canonical" href="https://canvas-protocol.com/about">
-<meta name="theme-color" content="#08080B">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/favicon.svg">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Canvas Protocol">
-<meta property="og:title" content="About Canvas Protocol">
-<meta property="og:description" content="Canvas prices human attention fairly: a verification marketplace on Telegram group joins, settling USDC on Base. Meet the team and the mission behind the protocol.">
-<meta property="og:url" content="https://canvas-protocol.com/about">
-<meta property="og:image" content="https://canvas-protocol.com/og.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="About Canvas Protocol">
-<meta name="twitter:description" content="Canvas prices human attention fairly: a verification marketplace on Telegram group joins, settling USDC on Base. Meet the team and the mission behind the protocol.">
-<meta name="twitter:image" content="https://canvas-protocol.com/og.png">
-<meta name="twitter:site" content="@Canvas_Protocol">
+<title>Canvas · About</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600;1,700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -367,64 +349,38 @@ footer { border-top: 1px solid var(--border); padding: 44px 56px; }
   .cta-section { padding: 88px 24px; }
   footer { padding: 40px 24px; }
 }
-
-/* Accessibility + mobile navigation */
-.skip-link { position:absolute; left:-9999px; top:0; z-index:500; background:var(--accent); color:#08080B; padding:10px 16px; border-radius:0 0 6px 0; font-size:13px; font-weight:600; text-decoration:none; }
-.skip-link:focus { left:0; }
-a:focus-visible, button:focus-visible, [tabindex]:focus-visible, input:focus-visible, [role="button"]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:3px; }
-.nav-toggle { display:none; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; width:42px; height:38px; cursor:pointer; align-items:center; justify-content:center; flex-direction:column; gap:4px; }
-.nav-toggle span { display:block; width:20px; height:2px; border-radius:2px; background:var(--text); transition:transform .2s ease, opacity .2s ease; }
-nav.nav-open .nav-toggle span:nth-child(1) { transform:translateY(6px) rotate(45deg); }
-nav.nav-open .nav-toggle span:nth-child(2) { opacity:0; }
-nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-45deg); }
-.nav-collapse { display:contents; }
-@media (max-width: 960px) {
-  .nav-toggle { display:inline-flex; }
-  .nav-collapse { display:none; position:absolute; top:60px; left:0; right:0; flex-direction:column; align-items:stretch; gap:0; background:rgba(8,8,11,0.98); border-bottom:1px solid var(--border); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); padding:8px 24px 20px; }
-  nav.nav-open .nav-collapse { display:flex; }
-  .nav-collapse .nav-links { position:static; transform:none; left:auto; display:flex; flex-direction:column; gap:0; }
-  .nav-collapse .nav-links a { display:block; padding:13px 0; border-bottom:1px solid var(--border); font-size:15px; }
-  .nav-collapse .nav-actions { flex-direction:column; align-items:stretch; gap:12px; margin-top:16px; }
-  .nav-collapse .nav-actions .btn-nav { justify-content:center; padding:12px; }
-  .nav-collapse .nav-contact { padding:4px 0; }
-}
 </style>
 </head>
 <body>
-<a class="skip-link" href="#main">Skip to content</a>
 
 
 
-<nav aria-label="Primary">
-  <a href="/" class="nav-logo">Canvas</a>
-  <div class="nav-collapse" id="nav-menu">
-    <ul class="nav-links">
-    <li><a href="/group-owners">Group Owners</a></li>
-    <li><a href="/advertisers">Advertisers</a></li>
-    <li><a href="/about" class="active">About</a></li>
-    <li><a href="https://docs.canvas-protocol.com">Docs</a></li>
+<nav>
+  <a href="index.html" class="nav-logo">Canvas</a>
+  <ul class="nav-links">
+    <li><a href="group-owners.html">Group Owners</a></li>
+    <li><a href="advertisers.html">Advertisers</a></li>
+    <li><a href="about.html" class="active">About</a></li>
+    <li><a href="#">Docs</a></li>
   </ul>
   <div class="nav-actions">
     <a href="mailto:hello@canvasprotocol.xyz" class="nav-contact">Contact</a>
-    <a href="/group-owners" class="btn-nav">Register your group →</a>
+    <a href="group-owners.html" class="btn-nav">Register your group →</a>
   </div>
-    </div>
-    <button class="nav-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-menu"><span></span><span></span><span></span></button>
 </nav>
-<a id="main" tabindex="-1"></a>
 
 <!-- MISSION -->
 <section class="mission">
   <span class="section-eyebrow">What we believe</span>
-  <h1>Human attention is the most valuable resource on the internet. Almost none of it gets <span>fairly priced.</span></h1>
+  <h1>Every group join is a moment of human attention. Right now, <span>all of it goes to waste.</span></h1>
   <div class="mission-body">
     <div>
-      <p>Every Telegram group is built on years of work: content created, audiences cultivated, communities nurtured. When a new person wants to join, they pass through a verification that generates no value for anyone. A CAPTCHA that proves nothing, asked by no one, for no reason.</p>
-      <p>Canvas replaces that moment with something useful. The new member answers a question. The advertiser gets a verified, contextual human response. The group owner gets paid. <strong>The attention that was already being spent starts generating returns.</strong></p>
+      <p>Someone built a Telegram community over years. Wrote the content, answered the questions, kept the conversation going. When a new person shows up and wants in, they solve a CAPTCHA that benefits Google or Cloudflare and nobody else. The group owner gets nothing. The attention spent is gone.</p>
+      <p>Canvas puts that moment to work. The new member answers a short question matched to the group's topic. The advertiser gets a verified human response with real audience context. The group owner receives USDC. <strong>Same ten seconds, different outcome.</strong></p>
     </div>
     <div>
-      <p>The verification market is the first step. The longer-term project is building the infrastructure that lets any digital community monetize its membership directly, on fair terms, without surrendering data to a platform, without chasing brand deals, and without making their members the product.</p>
-      <p><strong>Communities are the new media channels.</strong> The group owner who has 4,000 engaged DeFi traders deserves revenue infrastructure as serious as what any media company has access to. That's what we're building.</p>
+      <p>The longer-term project is straightforward: group owners should have direct revenue from the communities they built. Not from brand deals they have to chase, not from platform ad splits that require scale they don't have yet. From the membership activity that's already happening.</p>
+      <p>Crypto is where we're starting because both sides of the market already speak the language. But the goal is bigger. <strong>A Taylor Swift fan community, a fitness group, a cooking channel: every topic has group owners doing real work with no way to earn from it.</strong> Canvas is building the infrastructure to change that, one community at a time.</p>
     </div>
   </div>
 </section>
@@ -435,15 +391,15 @@ nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-
 <div class="origin-section">
   <div class="origin-inner">
     <div class="origin-label">
-      <span class="origin-year">2024</span>
-      <span class="origin-sub">DevConnect Buenos Aires<br>ETH Foundation × EigenLayer<br>Hacker House</span>
+      <span class="origin-year">2025</span>
+      <span class="origin-sub">DevConnect Buenos Aires<br>EigenCloud × ETH Foundation<br>The Vault · 2025</span>
     </div>
     <div class="origin-content">
       <span class="section-eyebrow">Where this started</span>
-      <h2>One of five finalist projects. Selected by the Ethereum Foundation and EigenLayer.</h2>
-      <p>The idea for Canvas is older than the name. For several years, Rohit had been trying to build a market for human attention inside the CAPTCHA flow, replacing the arbitrary bot-check with something valuable, and paying the people who host it.</p>
-      <p>At DevConnect 2024 in Buenos Aires, the Ethereum Foundation and EigenLayer hosted a hacker house with fifteen teams. <strong>Canvas was selected as one of five finalists</strong> and given a spotlight to present the technical architecture to the cohort.</p>
-      <p>The original build used EigenLayer for trust and verification. The current version runs on Base mainnet, with USDC settlements, a live escrow contract, and an AI scoring layer that validates every response before a payout releases. The core idea, <strong>sponsored verification that pays the community</strong>, is the same one that stood out in Buenos Aires.</p>
+      <h2>One of five finalist projects. Selected at The Vault Buenos Aires.</h2>
+      <p>Rohit had been working on the same problem for several years before Canvas had a name: the CAPTCHA is a toll booth that collects human attention and pays it to nobody. The question was how to redirect that value to the people who built the community hosting it.</p>
+      <p>At DevConnect 2025 in Buenos Aires, EigenCloud and the Ethereum Foundation's Developer Growth team co-organized The Vault, a builder residency for teams working on verifiable applications. <strong>Canvas was selected as one of five finalists</strong> and presented the protocol architecture to the cohort.</p>
+      <p>That version ran on EigenLayer. The current version runs on Base mainnet: USDC settlements, a live escrow contract, AI scoring on every response before any payout clears. The mechanism is the same one that got selected in Buenos Aires. <strong>The stack is the one that ships.</strong></p>
     </div>
   </div>
 </div>
@@ -452,46 +408,50 @@ nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-
 <div class="team-section">
   <div class="team-head">
     <span class="section-eyebrow">The team</span>
-    <h2>Product, distribution, and community.</h2>
-    <p>Two founders. One built the product. One built the audience that proves there's demand for it.</p>
+    <h2>Product, infrastructure, and distribution.</h2>
+    <p>Two founders from the University of Toronto. Rohit brought the idea. Alex joined and they've been building and iterating together since.</p>
   </div>
   <div class="team-grid">
     <div class="team-card">
       <div class="team-avatar">R</div>
       <div>
         <div class="team-name">Rohit Sarkar</div>
-        <a href="https://twitter.com/_rosark" class="team-handle" target="_blank" rel="noopener">@_rosark</a>
-        <span class="team-role">Co-founder · Product & GTM</span>
+        <div style="display:flex;gap:14px;margin-bottom:14px;">
+          <a href="https://www.linkedin.com/in/rohit-sarkar-094a68126/" class="team-handle" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://twitter.com/_rosark" class="team-handle" target="_blank" rel="noopener">@_rosark</a>
+        </div>
+        <span class="team-role">Co-founder · Product & Architecture</span>
         <p class="team-bio">
-          Rohit has spent five years embedded in the infrastructure layer of crypto, at <strong>0x</strong> (the swap infrastructure powering Bankr, Coinbase, MetaMask, and Robinhood), at <strong>Caldera</strong> (Rollup-as-a-Service), and at <strong>InfStones</strong>. He has a background in statistics and has been building the Canvas concept for three years.
+          Rohit spent five years covering the infrastructure layer of crypto from the inside: content at <strong>0x</strong> (the swap infrastructure powering Bankr, Coinbase, MetaMask, and Robinhood) and <strong>Caldera</strong> (Rollup-as-a-Service), and research at <strong>InfStones</strong>. That position, writing about how crypto protocols work for the people who build on them, is where the Canvas thesis came from. He has a degree in Applied Statistics from the University of Toronto and has been developing the concept for three years.
         </p>
         <p class="team-bio" style="margin-top: 16px;">
-          He owns product design, marketplace architecture, advertiser-side business development, and go-to-market. He left 0x in June 2026 and is fully committed to Canvas.
+          He brought the original idea and the marketplace design. He and Alex build and iterate together; Alex contributed key architectural decisions including the conversational captcha flow. He left 0x in June 2026 and is fully committed to Canvas.
         </p>
         <ul class="team-prev">
           <li>0x Protocol</li>
           <li>Caldera</li>
           <li>InfStones</li>
-          <li>DevConnect finalist 2024</li>
+          <li>Applied Statistics · UofT</li>
         </ul>
       </div>
     </div>
     <div class="team-card">
-      <div class="team-avatar">G</div>
+      <div class="team-avatar">A</div>
       <div>
-        <div class="team-name">gritcult</div>
-        <a href="https://twitter.com/gritcult" class="team-handle" target="_blank" rel="noopener">@gritcult</a>
-        <span class="team-role">Co-founder · Community & Distribution</span>
+        <div class="team-name">Alexander Vicol</div>
+        <a href="https://www.linkedin.com/in/alexander-vicol/" class="team-handle" target="_blank" rel="noopener">LinkedIn</a>
+        <span class="team-role">Co-founder · Engineering & Architecture</span>
         <p class="team-bio">
-          With <strong>110,000 followers on X</strong> and a track record of building crypto-native audiences from scratch, gritcult is the supply side of the Canvas thesis in person. He runs Telegram communities that are exactly the kind of groups Canvas was built for.
+          Alex is an MEng candidate in Electrical and Computer Engineering at the <strong>University of Toronto</strong>, supervised by Professor Steve Mann. A <strong>Schulich Leader</strong> and NSERC USRA recipient, he has co-authored five papers published at IEEE ICCE 2026 and has presented research internationally.
         </p>
         <p class="team-bio" style="margin-top: 16px;">
-          He owns community development, creator relationships, supply-side growth, and the distribution network that gets Canvas in front of group owners worth reaching. Based in London, relocating to NYC.
+          He joined as co-founder after Rohit brought the original idea, and the two build and iterate together. Alex contributed key architectural decisions, including the conversational captcha flow, where a cheap LLM probes thin answers to produce richer signal. He owns the full engineering stack: Railway deployment, Telegram bot infrastructure, smart contract integration, and AI scoring layer.
         </p>
         <ul class="team-prev">
-          <li>110k X following</li>
-          <li>Crypto community builder</li>
-          <li>London → NYC</li>
+          <li>Schulich Leader</li>
+          <li>NSERC USRA</li>
+          <li>5 IEEE papers · 2026</li>
+          <li>MEng ECE · UofT</li>
         </ul>
       </div>
     </div>
@@ -503,23 +463,23 @@ nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-
 <!-- VALUES -->
 <div class="values-section">
   <span class="section-eyebrow">What we stand for</span>
-  <h2>The principles behind every decision we make.</h2>
+  <h2>Four things we won't compromise on.</h2>
   <div class="values-list">
     <div class="value-row">
-      <div class="value-title">Communities deserve revenue infrastructure</div>
-      <div class="value-desc">A group owner who has cultivated 5,000 engaged members is doing real work that has real economic value. The tools available to them should reflect that. Canvas is the first step toward giving community builders the same revenue infrastructure that media companies take for granted.</div>
+      <div class="value-title">Group owners get paid directly</div>
+      <div class="value-desc">The person who spent two years building a 5,000-member DeFi community did real work. Canvas pays them per verified join and per re-verification, straight to their wallet, with no invoice and no waiting on an advertiser's billing cycle.</div>
     </div>
     <div class="value-row">
-      <div class="value-title">Attention should flow toward value, not friction</div>
-      <div class="value-desc">A standard CAPTCHA spends human attention on nothing. A Canvas verification spends the same attention on something useful, a question the advertiser actually wants answered, by the specific human who is answering it. That's a better use of ten seconds than proving you're not a robot to nobody in particular.</div>
+      <div class="value-title">The task has to be worth doing</div>
+      <div class="value-desc">A Canvas verification takes ten seconds. That's a real ask. The task has to be matched to the group's topic, relevant to the advertiser's product, and short enough that a genuine human completes it without friction. If the task is bad, the data is bad. We treat task quality as a product constraint.</div>
     </div>
     <div class="value-row">
-      <div class="value-title">Verification should create signal, not just gatekeeping</div>
-      <div class="value-desc">Every verification is an opportunity to learn something. Who is joining? What do they care about? What do they prefer? Canvas turns that moment into a data collection event with provenance, verified by community membership, scored for quality, settled on-chain.</div>
+      <div class="value-title">Context is what makes the data valuable</div>
+      <div class="value-desc">A DeFi trader ranking protocol responses knows what good looks like. A random Mechanical Turk worker doing the same task doesn't. Canvas ties every response to a verified, topic-matched human. That provenance is the thing AI labs are actually paying for, and it can't be faked after the fact.</div>
     </div>
     <div class="value-row">
-      <div class="value-title">Meet people where they already are</div>
-      <div class="value-desc">Canvas runs inside the platforms people already use, with the bots they already accept, in the flows they already navigate. No new app. No new username. No new wallet setup for the end user. The product has to work inside the existing context, not ask people to change their behavior to use it.</div>
+      <div class="value-title">The product runs where people already are</div>
+      <div class="value-desc">No new app. No new wallet. No behavior change for the person joining a group. Canvas runs inside Telegram, through a bot that group owners already know how to add. The verification flow is the only thing that changes, and for the human completing it, the change is ten seconds longer than before.</div>
     </div>
   </div>
 </div>
@@ -528,8 +488,8 @@ nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-
 <div class="roadmap-section">
   <div class="roadmap-inner">
     <span class="section-eyebrow">Where we're going</span>
-    <h2>Telegram is the start.</h2>
-    <p>Every platform where communities gather has the same unmonetized verification moment. Canvas is building the infrastructure to capture it.</p>
+    <h2>Telegram first.</h2>
+    <p>Discord, the open web, and every other platform where communities gather have the same join moment. Telegram is where we prove the model before expanding to them.</p>
     <div class="roadmap-grid">
       <div class="roadmap-phase">
         <span class="phase-tag phase-now">Now</span>
@@ -560,8 +520,7 @@ nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-
           <li>Open group registry with advertiser discovery</li>
           <li>Web verification embeds</li>
           <li>AI lab data pipeline integrations</li>
-          <li>Group owner analytics dashboard</li>
-          <li>Protocol token and governance</li>
+          <li>Expansion beyond crypto communities</li>
         </ul>
       </div>
     </div>
@@ -570,41 +529,26 @@ nav.nav-open .nav-toggle span:nth-child(3) { transform:translateY(-6px) rotate(-
 
 <!-- CTA -->
 <div class="cta-section">
-  <h2>Building something <span>worth joining.</span></h2>
-  <p>If you run a Telegram group, want to run a campaign, or just want to follow along, we'd love to hear from you.</p>
+  <h2>Run a group or <span>run a campaign?</span></h2>
+  <p>If you have a Telegram community and want to start earning from it, or if you want to reach a specific crypto-native audience, get in touch.</p>
   <div class="cta-btns">
-    <a href="/group-owners" class="btn-lg btn-primary">Register your group →</a>
+    <a href="group-owners.html" class="btn-lg btn-primary">Register your group →</a>
     <a href="mailto:hello@canvasprotocol.xyz" class="btn-lg btn-secondary">Get in touch</a>
   </div>
 </div>
 
 <footer>
   <div class="footer-inner">
-    <a href="/" class="footer-logo">Canvas</a>
+    <a href="index.html" class="footer-logo">Canvas</a>
     <ul class="footer-links">
-      <li><a href="/group-owners">Group Owners</a></li>
-      <li><a href="/advertisers">Advertisers</a></li>
-      <li><a href="/about">About</a></li>
-      <li><a href="https://docs.canvas-protocol.com">Docs</a></li>
+      <li><a href="group-owners.html">Group Owners</a></li>
+      <li><a href="advertisers.html">Advertisers</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="#">Docs</a></li>
       <li><a href="mailto:hello@canvasprotocol.xyz">Contact</a></li>
     </ul>
     <span class="footer-copy">© 2026 Canvas Protocol</span>
   </div>
 </footer>
-
-<script>
-(function(){
-  var nav=document.querySelector('nav');
-  var btn=nav&&nav.querySelector('.nav-toggle');
-  if(!nav||!btn)return;
-  btn.addEventListener('click',function(){
-    var open=nav.classList.toggle('nav-open');
-    btn.setAttribute('aria-expanded',open?'true':'false');
-  });
-  nav.querySelectorAll('.nav-collapse a').forEach(function(a){
-    a.addEventListener('click',function(){nav.classList.remove('nav-open');btn.setAttribute('aria-expanded','false');});
-  });
-})();
-</script>
 </body>
 </html>

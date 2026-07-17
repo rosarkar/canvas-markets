@@ -47,6 +47,8 @@ export interface OpenTextPayload {
   prompt: string;
   /** Sent once if the first reply looks too thin to score. */
   rePromptText?: string;
+  /** Conversational captcha: serialized enriched sponsor brief for the dialogue agent's later turns. */
+  brief?: string;
 }
 
 export interface PreferenceMcPayload {

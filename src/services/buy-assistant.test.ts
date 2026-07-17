@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildLiveContextMessage,
+  buildTaskTemplate,
   emptyIntent,
   interpretAdvertiserMessage,
   mergeIntent,
@@ -97,6 +98,36 @@ describe("mergeIntent", () => {
     const previous = normalizeIntent({ bidUsd: 0.2 });
     const next = normalizeIntent({ bidUsd: 0.5 });
     expect(mergeIntent(previous, next).bidUsd).toBe(0.5);
+  });
+});
+
+describe("buildTaskTemplate", () => {
+  it("confirmed campaign produces an object with openingPrompt present, not a plain string", () => {
+    const intent = normalizeIntent({
+      taskType: "open_text",
+      payload: { prompt: "What do you actually look for when buying an NFT?" },
+      goal: "Understand NFT purchase drivers",
+      targetSignal: "Names concrete traits, projects, or past purchases",
+      thinResponseExamples: ["art", "idk"],
+    });
+    const template = buildTaskTemplate(intent, "fallback");
+    expect(typeof template).toBe("object");
+    expect(template.openingPrompt).toBe("What do you actually look for when buying an NFT?");
+    expect(template.goal).toBe("Understand NFT purchase drivers");
+    expect(template.targetSignal).toBe("Names concrete traits, projects, or past purchases");
+    expect(template.thinResponseExamples).toEqual(["art", "idk"]);
+  });
+
+  it("falls back to wrapping the raw text when the prompt is missing", () => {
+    const template = buildTaskTemplate(normalizeIntent({}), "raw Kimi text");
+    expect(template).toEqual({ openingPrompt: "raw Kimi text" });
+  });
+
+  it("normalizes goal/targetSignal/thinResponseExamples defensively", () => {
+    const intent = normalizeIntent({ goal: 42, targetSignal: "  ", thinResponseExamples: ["ok", 7, ""] });
+    expect(intent.goal).toBeNull();
+    expect(intent.targetSignal).toBeNull();
+    expect(intent.thinResponseExamples).toEqual(["ok"]);
   });
 });
 

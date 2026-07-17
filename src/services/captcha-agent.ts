@@ -17,12 +17,58 @@ export interface AgentTurn {
 /** Opening question + at most two probes. Enforced in code, not just in the prompt. */
 const MAX_AGENT_TURNS = 3;
 
+interface StructuredBrief {
+  openingPrompt?: string;
+  goal?: string;
+  targetSignal?: string;
+  thinResponseExamples?: string[];
+}
+
+/**
+ * advertiserBrief may be a plain topic string or a serialized enriched brief
+ * ({openingPrompt, goal, targetSignal, thinResponseExamples}) from the buy flow's
+ * task_template. Parsing is internal — the function signature stays string.
+ */
+function parseBrief(advertiserBrief: string): StructuredBrief | null {
+  try {
+    const parsed = JSON.parse(advertiserBrief) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return null;
+    const brief: StructuredBrief = {};
+    if (typeof parsed.openingPrompt === "string") brief.openingPrompt = parsed.openingPrompt;
+    if (typeof parsed.goal === "string") brief.goal = parsed.goal;
+    if (typeof parsed.targetSignal === "string") brief.targetSignal = parsed.targetSignal;
+    if (Array.isArray(parsed.thinResponseExamples)) {
+      brief.thinResponseExamples = parsed.thinResponseExamples.filter(
+        (x): x is string => typeof x === "string",
+      );
+    }
+    return brief.openingPrompt || brief.goal || brief.targetSignal ? brief : null;
+  } catch {
+    return null;
+  }
+}
+
+function describeBrief(advertiserBrief: string): string {
+  const structured = parseBrief(advertiserBrief);
+  if (!structured) return `Topic brief from the sponsor: ${advertiserBrief}`;
+  const lines = ["Sponsor brief:"];
+  if (structured.goal) lines.push(`- Goal: ${structured.goal}`);
+  if (structured.targetSignal) lines.push(`- A good response looks like: ${structured.targetSignal}`);
+  if (structured.openingPrompt) {
+    lines.push(`- Suggested opening question (vary the wording or use directly): ${structured.openingPrompt}`);
+  }
+  if (structured.thinResponseExamples && structured.thinResponseExamples.length > 0) {
+    lines.push(`- Thin responses that should trigger a probe: ${structured.thinResponseExamples.map((x) => `"${x}"`).join(", ")}`);
+  }
+  return lines.join("\n");
+}
+
 function buildSystemPrompt(advertiserBrief: string, groupContext: string): string {
   return [
     "You are a verification agent for a Telegram group. A new member is joining and you are having a short conversation with them to verify they are a genuine human with real experience, not a bot or spam account.",
     "",
     `Group: ${groupContext}`,
-    `Topic brief from the sponsor: ${advertiserBrief}`,
+    describeBrief(advertiserBrief),
     "",
     "Your goal is to collect a genuine, experience-based response about the brief — not to run a format check. A real answer references specific experience, tools, decisions, or opinions.",
     "",

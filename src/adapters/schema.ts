@@ -84,6 +84,10 @@ export async function createCanvasTables(): Promise<void> {
       -- Owner accept/decline gate: when the approval request was DM'd to the group
       -- owner (campaigns auto-accept 48h after this timestamp).
       ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS approval_requested_at TIMESTAMPTZ;
+      -- Enriched task-design brief ({goal, targetSignal, openingPrompt,
+      -- thinResponseExamples}) for the conversational captcha agent. task_text
+      -- stays TEXT for its legacy string consumers.
+      ALTER TABLE advertiser_budgets ADD COLUMN IF NOT EXISTS task_template JSONB;
 
       -- registered_at was defined inside CREATE TABLE IF NOT EXISTS, which Postgres skips
       -- when the table already exists — the live DB never got the column (BUILD.md issue).

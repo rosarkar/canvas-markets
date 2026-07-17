@@ -9,6 +9,12 @@
 
 ## Changelog
 
+### July 17, 2026 — enriched task_template brief for the captcha agent
+- Buy agent now produces a structured task-design brief — `{goal, targetSignal, openingPrompt, thinResponseExamples}` — stored in new JSONB column `advertiser_budgets.task_template` (`migrations/2026-07-17-task-template-jsonb.sql`; the spec's "campaigns" table is advertiser_budgets here). `task_text` intentionally stays TEXT: it is read as a plain string in 8 call sites, so the enriched object got its own column instead of a type conversion; legacy rows (NULL) fall back to task_text unchanged.
+- TS-validated in `buildTaskTemplate()` (buy-assistant.ts): openingPrompt required, else falls back to `{openingPrompt: <raw text>}`.
+- captcha-agent's `advertiserBrief` stays `string`; it internally JSON.parses and, when structured fields are present, feeds them to the model as labeled context (goal / good-response shape / suggested opening to vary / probe-trigger examples) instead of a raw blob.
+- The verification task payload keeps a human-readable `prompt` (scorer + resend-DM fallback) alongside the serialized `brief` used on later agent turns.
+
 ### July 17, 2026 — conversational /register (Kimi-powered owner onboarding)
 - DM `/register` (which previously just printed instructions) now runs a Kimi-driven conversation via new `src/services/register-assistant.ts` (tested in `register-assistant.test.ts`), collecting group link, topic, Base payout wallet, and price per verification in any order. In-group `/register` and auto-registration are unchanged.
 - All validation is TypeScript-side (Kimi only extracts): link must be `t.me/`/`@`, wallet must be a 42-char 0x hex address, price ≥ $0.10. The `registerGroup` write fires only on an explicit "confirm"/"yes" with all four fields valid; malformed Kimi JSON gets a retry reply without advancing session state.

@@ -7,11 +7,13 @@ import { createTemplate } from "@/adapters/templates.adapter.js";
 import { config } from "@/config/index.js";
 import {
   buildLiveContextMessage,
+  buildTaskTemplate,
   emptyIntent,
   interpretAdvertiserMessage,
   mergeIntent,
   type BuyAgentIntent,
   type GroupContext,
+  type TaskTemplateBrief,
 } from "@/services/buy-assistant.js";
 import type { KimiMessage } from "@/services/scoring.js";
 import {
@@ -45,6 +47,7 @@ interface ValidatedCampaign {
   taskType: TaskType;
   payload: TaskPayload;
   templateName: string;
+  taskTemplate: TaskTemplateBrief;
 }
 
 function deriveTemplateName(prompt: string | null): string {
@@ -181,6 +184,7 @@ async function validateIntent(intent: BuyAgentIntent, groups: GroupRow[]): Promi
       taskType,
       payload,
       templateName: intent.templateName?.trim() || deriveTemplateName(draftPrompt),
+      taskTemplate: buildTaskTemplate(intent, draftPrompt ?? intent.templateName ?? "Verification task"),
     },
     topBidMicroUnits: topBid?.bidPerVerification ?? null,
   };
@@ -239,6 +243,7 @@ async function finalizeCampaign(
       bidMicroUnits: campaign.bidMicroUnits,
       quantity: campaign.quantity,
       taskText: (campaign.payload as { prompt?: string }).prompt,
+      taskTemplate: campaign.taskTemplate,
       templateId: template.templateId,
     });
 

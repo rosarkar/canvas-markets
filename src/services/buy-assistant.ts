@@ -53,9 +53,14 @@ OUTPUT CONTRACT — every reply, with no exceptions, must be ONLY a JSON object 
       "agentOfferMessage": <string or null — preference_mc only>,
       "agentOfferCtaLabel": <string or null — preference_mc only>,
       "agentOfferCtaUrl": <string or null — preference_mc only>
-    }
+    },
+    "goal": <string or null — what the advertiser wants to learn or accomplish with this campaign, in one sentence>,
+    "targetSignal": <string or null — what a good response looks like: specific, experience-based>,
+    "thinResponseExamples": <array of 1-3 short strings or null — examples of thin responses that should trigger a follow-up probe, e.g. "sounds good", "B">
   }
 }
+
+Fill in "goal", "targetSignal", and "thinResponseExamples" yourself from the conversation once the task content is settled — do not ask the advertiser for them.
 
 "intent" must reflect EVERYTHING the advertiser has specified across the whole conversation so far, not just this message — carry forward every previously stated field even if the advertiser didn't repeat it this turn. Use null only for fields never stated.`;
 
@@ -79,6 +84,35 @@ export interface BuyAgentIntent {
   taskType: TaskType | null;
   templateName: string | null;
   payload: BuyAgentPayloadIntent;
+  goal: string | null;
+  targetSignal: string | null;
+  thinResponseExamples: string[] | null;
+}
+
+/** Enriched task-design brief stored as advertiser_budgets.task_template (JSONB) and read by the captcha agent. */
+export interface TaskTemplateBrief {
+  openingPrompt: string;
+  goal?: string;
+  targetSignal?: string;
+  thinResponseExamples?: string[];
+}
+
+/**
+ * Builds the JSONB task_template from the final intent. TS-validated: openingPrompt
+ * (the task prompt) must be present — if the intent somehow lacks it, fall back to
+ * wrapping the raw text so the column always holds { openingPrompt: ... }.
+ */
+export function buildTaskTemplate(intent: BuyAgentIntent, rawFallback: string): TaskTemplateBrief {
+  const openingPrompt = intent.payload.prompt?.trim();
+  if (!openingPrompt) return { openingPrompt: rawFallback };
+  return {
+    openingPrompt,
+    ...(intent.goal ? { goal: intent.goal } : {}),
+    ...(intent.targetSignal ? { targetSignal: intent.targetSignal } : {}),
+    ...(intent.thinResponseExamples && intent.thinResponseExamples.length > 0
+      ? { thinResponseExamples: intent.thinResponseExamples }
+      : {}),
+  };
 }
 
 export interface GroupContext {
@@ -107,7 +141,16 @@ export function emptyIntent(): BuyAgentIntent {
       agentOfferCtaLabel: null,
       agentOfferCtaUrl: null,
     },
+    goal: null,
+    targetSignal: null,
+    thinResponseExamples: null,
   };
+}
+
+function normalizeStringList(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const items = raw.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim());
+  return items.length > 0 ? items : null;
 }
 
 /** Pure prompt formatter — fresh live numbers get fed in every turn, not just at session start. */
@@ -189,6 +232,9 @@ export function normalizeIntent(raw: unknown): BuyAgentIntent {
       agentOfferCtaLabel: asStringOrNull(p.agentOfferCtaLabel),
       agentOfferCtaUrl: asStringOrNull(p.agentOfferCtaUrl),
     },
+    goal: asStringOrNull(r.goal),
+    targetSignal: asStringOrNull(r.targetSignal),
+    thinResponseExamples: normalizeStringList(r.thinResponseExamples),
   };
 }
 
@@ -222,6 +268,9 @@ export function mergeIntent(previous: BuyAgentIntent, next: BuyAgentIntent): Buy
       agentOfferCtaLabel: pickNonNull(previous.payload.agentOfferCtaLabel, next.payload.agentOfferCtaLabel),
       agentOfferCtaUrl: pickNonNull(previous.payload.agentOfferCtaUrl, next.payload.agentOfferCtaUrl),
     },
+    goal: pickNonNull(previous.goal, next.goal),
+    targetSignal: pickNonNull(previous.targetSignal, next.targetSignal),
+    thinResponseExamples: pickNonNull(previous.thinResponseExamples, next.thinResponseExamples),
   };
 }
 

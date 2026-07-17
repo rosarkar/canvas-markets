@@ -7,6 +7,8 @@ export interface TopBid {
   bidPerVerification: bigint;
   remainingBudget: bigint;
   taskText: string | null;
+  /** Enriched task-design brief ({openingPrompt, goal, targetSignal, thinResponseExamples}) for the captcha agent. */
+  taskTemplate: unknown | null;
   advertiserTgId: bigint | null;
   templateId: number | null;
 }
@@ -30,6 +32,7 @@ export async function getTopBidForGroup(groupId: number): Promise<TopBid | null>
             bid_per_verification AS "bidPerVerification",
             remaining_budget AS "remainingBudget",
             task_text AS "taskText",
+            task_template AS "taskTemplate",
             advertiser_tg_id AS "advertiserTgId",
             template_id AS "templateId"
      FROM advertiser_budgets
@@ -48,6 +51,7 @@ export async function getTopBidForGroup(groupId: number): Promise<TopBid | null>
     bidPerVerification: BigInt(row.bidPerVerification as string | bigint),
     remainingBudget: BigInt(row.remainingBudget as string | bigint),
     taskText: row.taskText as string | null,
+    taskTemplate: row.taskTemplate ?? null,
     advertiserTgId: row.advertiserTgId != null ? BigInt(row.advertiserTgId as string | bigint) : null,
     templateId: row.templateId != null ? Number(row.templateId) : null,
   };
@@ -85,19 +89,21 @@ export async function placeBid(input: {
   bidMicroUnits: bigint;
   quantity: number;
   taskText?: string;
+  taskTemplate?: unknown;
   templateId?: number;
 }): Promise<{ advertiserId: number; expectedDepositMicro: bigint }> {
   const totalBudget = input.bidMicroUnits * BigInt(input.quantity);
   const insert = await db.query<{ advertiser_id: number }>(
     `INSERT INTO advertiser_budgets
-       (group_id, bid_per_verification, remaining_budget, task_text, advertiser_tg_id,
-        template_id, campaign_status, expected_deposit_micro)
-     VALUES ($1, $2, 0, $3, $4, $5, 'pending_deposit', $6)
+       (group_id, bid_per_verification, remaining_budget, task_text, task_template,
+        advertiser_tg_id, template_id, campaign_status, expected_deposit_micro)
+     VALUES ($1, $2, 0, $3, $4, $5, $6, 'pending_deposit', $7)
      RETURNING advertiser_id`,
     [
       input.groupId,
       input.bidMicroUnits.toString(),
       input.taskText ?? null,
+      input.taskTemplate != null ? JSON.stringify(input.taskTemplate) : null,
       input.advertiserTgId.toString(),
       input.templateId ?? null,
       totalBudget.toString(),

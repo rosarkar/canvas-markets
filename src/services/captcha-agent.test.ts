@@ -121,6 +121,33 @@ describe("getNextAgentTurn", () => {
     expect(turn).toEqual({ message: "", shouldClose: true });
   });
 
+  it("structured brief (goal + targetSignal + openingPrompt) produces a valid first turn", async () => {
+    mockedCallKimi.mockResolvedValue(
+      '{"message": "Which vault are you actually parked in right now, and why that one?", "shouldClose": false}',
+    );
+
+    const turn = await getNextAgentTurn({
+      advertiserBrief: JSON.stringify({
+        goal: "Learn which yield venues real users trust",
+        targetSignal: "Names a specific protocol and a concrete reason",
+        openingPrompt: "What DeFi protocols do you use for yield?",
+        thinResponseExamples: ["sounds good", "B"],
+      }),
+      groupContext: baseParams.groupContext,
+      conversationHistory: [],
+      isFirstTurn: true,
+    });
+
+    expect(turn.message).toBe("Which vault are you actually parked in right now, and why that one?");
+    expect(turn.shouldClose).toBe(false);
+    // The structured fields reach the model as structured context, not a raw JSON blob.
+    const systemPrompt = mockedCallKimi.mock.calls[0]![0][0]!.content;
+    expect(systemPrompt).toContain("Goal: Learn which yield venues real users trust");
+    expect(systemPrompt).toContain("Suggested opening question");
+    expect(systemPrompt).toContain('"sounds good"');
+    expect(systemPrompt).not.toContain('{"goal"');
+  });
+
   it("tolerates markdown-fenced JSON", async () => {
     mockedCallKimi.mockResolvedValue('```json\n{"message": "Opening question?", "shouldClose": false}\n```');
 

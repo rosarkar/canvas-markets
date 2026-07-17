@@ -60,13 +60,17 @@ export async function beginVerification(
   const template = topBid?.templateId ? await getTemplateById(topBid.templateId) : null;
 
   // Conversational captcha: the dialogue agent generates a natural opening question
-  // from the advertiser's brief (template prompt → campaign task_text → group topic).
-  // If the agent fails, fall back to the legacy static task DM.
-  const advertiserBrief =
+  // from the advertiser's brief (enriched task_template → template prompt → campaign
+  // task_text → group topic). If the agent fails, fall back to the legacy static task
+  // DM. The enriched brief travels serialized — captcha-agent parses it internally.
+  const humanPrompt =
+    (topBid?.taskTemplate as { openingPrompt?: string } | null)?.openingPrompt?.trim() ||
     (template?.payload as { prompt?: string } | null)?.prompt?.trim() ||
     topBid?.taskText?.trim() ||
     group.verificationTaskText?.trim() ||
     `the topic of the group "${groupTitle}"`;
+  const advertiserBrief =
+    topBid?.taskTemplate != null ? JSON.stringify(topBid.taskTemplate) : humanPrompt;
   const groupContext = [groupTitle, group.verificationTaskText ?? ""].filter(Boolean).join(" — ");
   const opening = await getNextAgentTurn({
     advertiserBrief,
@@ -76,8 +80,10 @@ export async function beginVerification(
   });
   const conversational = opening.message.length > 0 && !opening.shouldClose;
 
+  // prompt stays human-readable (it feeds the scorer and the resend-DM fallback);
+  // brief carries the serialized enriched context for the agent's later turns.
   const task: ResolvedVerificationTask = conversational
-    ? { taskType: TaskType.OPEN_TEXT, payload: { prompt: advertiserBrief } }
+    ? { taskType: TaskType.OPEN_TEXT, payload: { prompt: humanPrompt, brief: advertiserBrief } }
     : resolveVerificationTask(group, topBid, template);
 
   const verification = await createVerification({

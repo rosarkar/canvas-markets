@@ -242,7 +242,9 @@ export async function processTextVerificationResponse(
   // the multi-turn flow — the agent decides whether to probe or close, and the Kimi
   // quality gate scores the full transcript at the end.
   if (verification.conversationTurn > 0) {
-    return processConversationalResponse(api, verification, prompt, responseText);
+    // The serialized enriched brief (if the campaign has one) drives the agent;
+    // the human-readable prompt still anchors the scoring call.
+    return processConversationalResponse(api, verification, payload?.brief ?? prompt, responseText, prompt);
   }
 
   if (canRePrompt && isThinResponse(responseText)) {
@@ -272,6 +274,7 @@ async function processConversationalResponse(
   verification: VerificationRow,
   advertiserBrief: string,
   responseText: string,
+  scoringPrompt: string = advertiserBrief,
 ): Promise<TextVerificationOutcome> {
   await appendConversationMessage(
     verification.verificationId,
@@ -317,5 +320,5 @@ async function processConversationalResponse(
   }
 
   // Close: the unchanged quality gate scores the whole transcript.
-  return finalize(api, verification, advertiserBrief, formatTranscript(history));
+  return finalize(api, verification, scoringPrompt, formatTranscript(history));
 }

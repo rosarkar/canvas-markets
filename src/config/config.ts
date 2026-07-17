@@ -42,6 +42,15 @@ interface Config {
   openai: {
     apiKey: string;
   };
+  markets: {
+    /** TxODDS hackathon API key. Empty → the risk desk runs on sample fixtures. */
+    txoddsApiKey: string;
+    txoddsBaseUrl: string;
+    /** When true (and a Bankr key is set) settlement places real on-chain bets. */
+    liveSettlement: boolean;
+    /** Repeated-bet horizon for the Monte-Carlo bankroll projection. */
+    simHorizonBets: number;
+  };
   constants: {
     /** Calibrated after founder review of first ~50 responses; placeholder until then. */
     KIMI_PASS_THRESHOLD: number;
@@ -100,6 +109,12 @@ export const config: Config = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY?.trim() ?? "",
+  },
+  markets: {
+    txoddsApiKey: process.env.TXODDS_API_KEY?.trim() ?? "",
+    txoddsBaseUrl: process.env.TXODDS_BASE_URL?.trim() ?? "https://api.txodds.net",
+    liveSettlement: (process.env.MARKETS_LIVE_SETTLEMENT?.trim() ?? "false") === "true",
+    simHorizonBets: Number(process.env.MARKETS_SIM_HORIZON_BETS ?? "40"),
   },
   constants: {
     KIMI_PASS_THRESHOLD: Number(process.env.KIMI_PASS_THRESHOLD ?? "0"),

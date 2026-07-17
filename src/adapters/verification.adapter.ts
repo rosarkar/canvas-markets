@@ -10,6 +10,11 @@ import {
 
 export type VerificationEntryType = "open_join" | "join_request";
 
+export interface ConversationMessage {
+  role: "assistant" | "user";
+  content: string;
+}
+
 export interface VerificationRow {
   verificationId: string;
   tgUserId: bigint;
@@ -25,6 +30,8 @@ export interface VerificationRow {
   taskType: string | null;
   taskPayload: unknown | null;
   attemptCount: number;
+  conversationHistory: ConversationMessage[];
+  conversationTurn: number;
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -47,6 +54,8 @@ function mapRow(r: Record<string, unknown>): VerificationRow {
     taskType: (r.task_type as string | null) ?? null,
     taskPayload: r.task_payload ?? null,
     attemptCount: r.attempt_count as number,
+    conversationHistory: (r.conversation_history as ConversationMessage[] | null) ?? [],
+    conversationTurn: (r.conversation_turn as number | null) ?? 0,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
     expiresAt: r.expires_at as Date | null,
@@ -171,6 +180,26 @@ export async function transitionState(
     await setCooldown(row.tgUserId, row.groupId);
   }
   return true;
+}
+
+/**
+ * Append one message to the conversational-captcha log. incrementTurn bumps
+ * conversation_turn — used for the agent's opening message and each user reply
+ * (agent probes are appended without incrementing).
+ */
+export async function appendConversationMessage(
+  verificationId: string,
+  message: ConversationMessage,
+  options?: { incrementTurn?: boolean },
+): Promise<void> {
+  await db.query(
+    `UPDATE verifications
+     SET conversation_history = COALESCE(conversation_history, '[]'::jsonb) || $2::jsonb,
+         conversation_turn = conversation_turn + $3,
+         updated_at = NOW()
+     WHERE verification_id = $1`,
+    [verificationId, JSON.stringify([message]), options?.incrementTurn ? 1 : 0],
+  );
 }
 
 /** Bump attempt_count after sending a one-shot re-prompt for a thin/incomplete reply. */

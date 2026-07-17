@@ -9,6 +9,12 @@
 
 ## Changelog
 
+### July 17, 2026 — conversational captcha (multi-turn dialogue agent)
+- Single-shot captcha replaced with a multi-turn conversation: a dialogue agent (new `src/services/captcha-agent.ts`, tested in `captcha-agent.test.ts`) drives the DM exchange; the Kimi quality gate is unchanged and scores the full transcript at close.
+- Agent opens with a natural question generated from the advertiser brief (template prompt → campaign task_text → group topic fallback), probes once or twice on vague/thin/pattern-like answers, and is hard-capped at 3 agent turns. JSON parse failures fail closed.
+- New `verifications` columns: `conversation_history` JSONB (full agent/user log) and `conversation_turn` INT — `migrations/2026-07-17-conversational-captcha.sql` for the live DB, idempotent equivalents in `schema.ts` for fresh DBs (migrations/ folder is new; schema.ts remains the boot-time mechanism).
+- Flow: join handler (`begin-verification.ts`) stores the opening as turn 1 and DMs it (legacy static task DM is the fallback if the agent errors); the DM reply handler (`process-text-response.ts`) appends each user reply, increments the turn, and closes at turn ≥ 4 or when the agent says so — row stays in TASK_SENT/DEEP_LINK_SENT between probes. Scoring threshold, payout logic, and terminal states untouched.
+
 ### July 7, 2026 — UX audit fixes (commits 6ca18bf → 8d4d791)
 
 A post-marathon audit of the seams between the day's new features surfaced four edge cases, all fixed and deployed:
@@ -196,9 +202,9 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 
 ### Working
 - Join interception and mute
-- Captcha task delivery via DM
-- Kimi scoring of responses (with no-advertiser bypass)
-- Re-prompt on thin/short answers
+- Conversational captcha via DM — dialogue agent opens from the advertiser brief, probes thin answers (max 3 agent turns), transcript scored at close (July 17, 2026; legacy static task DM is the fallback path)
+- Kimi scoring of responses (with no-advertiser bypass) — now scores the full conversation transcript
+- Re-prompt on thin/short answers (legacy single-shot path; the dialogue agent handles this conversationally)
 - Post-verification rules gate with "I agree ✓"
 - USDC payout on verification pass
 - Group owner DM menu (6 buttons, group-scoped)

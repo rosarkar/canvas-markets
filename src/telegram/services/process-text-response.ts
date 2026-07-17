@@ -2,10 +2,13 @@ import type { Api } from "grammy";
 
 import { getGroupById } from "@/adapters/groups.adapter.js";
 import {
+  appendConversationMessage,
   bumpAttemptCount,
   transitionState,
+  type ConversationMessage,
   type VerificationRow,
 } from "@/adapters/verification.adapter.js";
+import { getNextAgentTurn } from "@/services/captcha-agent.js";
 import { scoreWithKimi, passesThreshold, type ScoreResult } from "@/services/scoring.js";
 import {
   TaskType,
@@ -235,10 +238,84 @@ export async function processTextVerificationResponse(
     prompt = group?.verificationTaskText ?? "Tell us about yourself.";
   }
 
+  // Conversational captcha: rows started by the dialogue agent (turn > 0) go through
+  // the multi-turn flow — the agent decides whether to probe or close, and the Kimi
+  // quality gate scores the full transcript at the end.
+  if (verification.conversationTurn > 0) {
+    return processConversationalResponse(api, verification, prompt, responseText);
+  }
+
   if (canRePrompt && isThinResponse(responseText)) {
     await sendRePrompt(api, verification, payload?.rePromptText ?? DEFAULT_OPEN_TEXT_REPROMPT);
     return { outcome: "re_prompted" };
   }
 
   return finalize(api, verification, prompt, responseText);
+}
+
+/** Render the dialogue log as a transcript for the Kimi quality scorer. */
+function formatTranscript(history: ConversationMessage[]): string {
+  return history
+    .map((m) => `${m.role === "assistant" ? "Agent" : "User"}: ${m.content}`)
+    .join("\n");
+}
+
+/**
+ * Multi-turn conversational captcha. Each user reply is appended to
+ * conversation_history and bumps conversation_turn; the row stays in
+ * TASK_SENT/DEEP_LINK_SENT between agent probes. The conversation closes when the
+ * agent says so or after 4 turns (agent opening + 3 user replies), at which point
+ * the full transcript goes through the unchanged Kimi scoring gate in finalize().
+ */
+async function processConversationalResponse(
+  api: Api,
+  verification: VerificationRow,
+  advertiserBrief: string,
+  responseText: string,
+): Promise<TextVerificationOutcome> {
+  await appendConversationMessage(
+    verification.verificationId,
+    { role: "user", content: responseText },
+    { incrementTurn: true },
+  );
+  const history: ConversationMessage[] = [
+    ...verification.conversationHistory,
+    { role: "user", content: responseText },
+  ];
+  const turn = verification.conversationTurn + 1;
+
+  let shouldClose = turn >= 4;
+  let agentMessage = "";
+
+  if (!shouldClose) {
+    const group = await getGroupById(verification.groupId);
+    const groupContext = [group?.groupTitle ?? "the group", group?.verificationTaskText ?? ""]
+      .filter(Boolean)
+      .join(" — ");
+    const next = await getNextAgentTurn({
+      advertiserBrief,
+      groupContext,
+      conversationHistory: history,
+      isFirstTurn: false,
+    });
+    shouldClose = next.shouldClose;
+    agentMessage = next.message;
+  }
+
+  if (!shouldClose && agentMessage) {
+    await appendConversationMessage(verification.verificationId, {
+      role: "assistant",
+      content: agentMessage,
+    });
+    try {
+      await api.sendMessage(Number(verification.tgUserId), agentMessage);
+    } catch {
+      /* user may have blocked the bot — the row stays open until the TTL sweep */
+    }
+    // No state transition — the row stays in TASK_SENT/DEEP_LINK_SENT awaiting the next reply.
+    return { outcome: "re_prompted" };
+  }
+
+  // Close: the unchanged quality gate scores the whole transcript.
+  return finalize(api, verification, advertiserBrief, formatTranscript(history));
 }

@@ -135,6 +135,10 @@ export async function createCanvasTables(): Promise<void> {
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS scoring_retries INT NOT NULL DEFAULT 0;
       -- Why a COOLDOWN_REJECTED row was logged: 'group_cooldown_24h' | 'attempt_limit_12h'.
       ALTER TABLE verifications ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+      -- Conversational captcha: full agent/user message log + turn counter
+      -- (turn increments on the agent opening and on each user reply).
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS conversation_history JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE verifications ADD COLUMN IF NOT EXISTS conversation_turn INT NOT NULL DEFAULT 0;
 
       CREATE INDEX IF NOT EXISTS idx_verifications_payout_pending
         ON verifications (payout_status) WHERE payout_status = 'pending';

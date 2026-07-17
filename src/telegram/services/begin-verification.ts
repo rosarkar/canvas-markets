@@ -5,12 +5,14 @@ import { getTopBidForGroup } from "@/adapters/bidding.js";
 import type { GroupRow } from "@/adapters/groups.adapter.js";
 import { getTemplateById } from "@/adapters/templates.adapter.js";
 import {
+  appendConversationMessage,
   createVerification,
   getVerificationByToken,
   type VerificationEntryType,
   type VerificationRow,
   transitionState,
 } from "@/adapters/verification.adapter.js";
+import { getNextAgentTurn } from "@/services/captcha-agent.js";
 import { getCaptchaById } from "@/services/captcha-questions.js";
 import {
   resolveVerificationTask,
@@ -56,7 +58,28 @@ export async function beginVerification(
 ): Promise<BeginVerificationResult> {
   const topBid = await getTopBidForGroup(group.groupId);
   const template = topBid?.templateId ? await getTemplateById(topBid.templateId) : null;
-  const task = resolveVerificationTask(group, topBid, template);
+
+  // Conversational captcha: the dialogue agent generates a natural opening question
+  // from the advertiser's brief (template prompt → campaign task_text → group topic).
+  // If the agent fails, fall back to the legacy static task DM.
+  const advertiserBrief =
+    (template?.payload as { prompt?: string } | null)?.prompt?.trim() ||
+    topBid?.taskText?.trim() ||
+    group.verificationTaskText?.trim() ||
+    `the topic of the group "${groupTitle}"`;
+  const groupContext = [groupTitle, group.verificationTaskText ?? ""].filter(Boolean).join(" — ");
+  const opening = await getNextAgentTurn({
+    advertiserBrief,
+    groupContext,
+    conversationHistory: [],
+    isFirstTurn: true,
+  });
+  const conversational = opening.message.length > 0 && !opening.shouldClose;
+
+  const task: ResolvedVerificationTask = conversational
+    ? { taskType: TaskType.OPEN_TEXT, payload: { prompt: advertiserBrief } }
+    : resolveVerificationTask(group, topBid, template);
+
   const verification = await createVerification({
     tgUserId: BigInt(user.id),
     groupId: group.groupId,
@@ -69,8 +92,32 @@ export async function beginVerification(
     ...taskToTransitionExtra(task),
   });
 
-  const sendTaskDm = (): Promise<boolean> =>
-    sendVerificationTaskDm(api, user.id, verification.verificationId, task, groupTitle);
+  if (conversational) {
+    // conversation_turn = 1: the agent's opening message counts as the first turn.
+    await appendConversationMessage(
+      verification.verificationId,
+      { role: "assistant", content: opening.message },
+      { incrementTurn: true },
+    );
+  }
+
+  const sendTaskDm = async (): Promise<boolean> => {
+    if (conversational) {
+      try {
+        await api.sendMessage(
+          user.id,
+          `👋 Hey! You just requested to join **${groupTitle}**.\n\n` +
+            `This group uses Canvas to verify new members before letting anyone in — just answer in your own words.\n\n` +
+            `${opening.message}`,
+          { parse_mode: "Markdown" },
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return sendVerificationTaskDm(api, user.id, verification.verificationId, task, groupTitle);
+  };
 
   const me = await api.getMe();
   const botUsername = me.username ?? "CanvasVerificationBot";

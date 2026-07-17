@@ -46,11 +46,13 @@ Notes:
 
 ## Current state
 
-**Working end-to-end:** join interception (both `chat_member` and join-request paths) → captcha/open-text task via DM → Kimi scoring with fail-closed + retry queue → post-verification rules gate → admission; advertiser campaigns (guided `/buy` flow, top-ups, withdraw with in-flight protection, group-owner accept/decline gate with 48h auto-accept); USDC escrow deposits (Base Pay + direct `depositBudget`) and daily payout batch (per-campaign balance checks, separate owner/fee legs, claim pattern); per-group 12h rate limiting with rejection audit log; recovery sweeps for every stranded state; admin DM alerts for silent failures; wallet-signature-authenticated dashboards (advertiser + group owner); persistent dual-identity sessions.
+**Working end-to-end:** join interception (both `chat_member` and join-request paths) → conversational multi-turn captcha via DM (Kimi-powered, probes thin responses, 2–4 turns, full transcript scored) → Kimi quality scoring with fail-closed + retry queue → post-verification rules gate → admission; group owner registration via conversational /register flow (Kimi-powered, collects group link, topic, payout wallet, and price across multiple turns); advertiser campaigns (conversational /buy flow producing structured JSONB brief, top-ups, withdraw with in-flight protection, group-owner accept/decline gate with 48h auto-accept); USDC escrow deposits (Base Pay + direct `depositBudget`) and daily payout batch (per-campaign balance checks, separate owner/fee legs, claim pattern); per-group 12h rate limiting with rejection audit log; recovery sweeps for every stranded state; admin DM alerts for silent failures; wallet-signature-authenticated dashboards (advertiser + group owner); persistent dual-identity sessions; defensive hardening for non-text messages, failed DMs, empty briefs, and post-verification reply handling.
 
 **Deferred / V2:**
 - **Rate-limiting review** — current thresholds (12h per-group window, 24h failure cooldown) are first-pass values; revisit with real traffic data. `COOLDOWN_REJECTED` rows are the signal source.
 - **Phase 2 re-verification** — periodic re-verification of existing members (the recurring-revenue model); not started.
+- **In-memory session TTL** — a user who starts /buy or /register and walks away keeps their session open until process restart, suppressing verification reply routing for that user. Fix: 30-minute idle expiry on all session Maps. Must fix before permissionless launch.
+- **Conversational model swap** — captcha-agent.ts and register-assistant.ts currently use Kimi for both dialogue and scoring. The dialogue layer is designed to be swapped to a cheaper/faster model (Bankr LLM credits) without touching the scoring layer. Deferred until after first live demo.
 - Also parked: contract audit (before public rollout), group-owner abuse detection (freeze payouts on farming signals — design in BUILD.md), mod/admin payout splits, scoring-bonus persistence for deferred completions.
 
 ## Read these first
@@ -60,6 +62,7 @@ Notes:
 3. **`src/services/escrow.ts`** — every on-chain interaction: the confirmed ABI, relayer wallet, payout/credit/balance calls, and the comment explaining why `refundUnusedBudget` was removed.
 4. **`contracts/CanvasEscrowV0.sol`** — the escrow itself (~90 lines). Deployed bytecode matches this source (verified on Basescan).
 5. Bonus: `src/services/verification-states.ts` — the 17-state verification state machine with per-state exemption docs; most bugs in this codebase's history lived in state transitions.
+6. **`src/services/captcha-agent.ts`** — the conversational verification agent. Drives the multi-turn DM flow from advertiser brief to transcript close. Read this alongside `process-text-response.ts` (the message handler that routes turns) and `begin-verification.ts` (which opens the conversation on join).
 
 ## Money paths (be careful here)
 

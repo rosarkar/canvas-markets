@@ -10,7 +10,12 @@
   <style>
     :root{--bg:#08080B;--surface:#0E0E14;--surface-2:#131319;--border:#1C1C28;--text:#F0EDE8;--muted:#9694A4;--muted-2:#66637A;--accent:#E9A84C;--accent-bg:rgba(233,168,76,.09);--green:#4ADE80;--red:#ef4444;--blue:#6ea8fe;--sans:'Inter',-apple-system,sans-serif;--serif:'Cormorant Garamond',Georgia,serif;}
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:radial-gradient(1200px 600px at 50% -200px,rgba(233,168,76,.06),transparent),var(--bg);color:var(--text);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:90px}
+    body{background:radial-gradient(1200px 600px at 50% -200px,rgba(233,168,76,.06),transparent),var(--bg);color:var(--text);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:90px;scrollbar-width:thin;scrollbar-color:#2b2b38 transparent}
+    ::-webkit-scrollbar{width:12px;height:12px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#23232e;border:3px solid var(--bg);border-radius:10px}
+    ::-webkit-scrollbar-thumb:hover{background:#33333f}
+    ::-webkit-scrollbar-corner{background:transparent}
     .wrap{max-width:940px;margin:0 auto;padding:20px}
     header.top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:16px;border-bottom:1px solid var(--border)}
     .brand{font-family:var(--serif);font-size:32px;font-weight:600}
@@ -49,7 +54,11 @@
     .lb{display:flex;align-items:center;gap:10px;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border)}
     .lb:last-child{border:0} .lb .rank{width:22px;color:var(--muted);font-weight:700;text-align:center} .lb .h{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .lb .p{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
     .lb.meRow{background:var(--accent-bg);border-radius:8px;padding:7px 8px}
-    .mypreds{max-height:220px;overflow:auto}
+    .mypreds{max-height:220px;overflow:auto;scrollbar-width:thin;scrollbar-color:#2c2c38 transparent;padding-right:4px}
+    .mypreds::-webkit-scrollbar{width:8px}
+    .mypreds::-webkit-scrollbar-track{background:transparent;margin:2px 0}
+    .mypreds::-webkit-scrollbar-thumb{background:#26262f;border:2px solid var(--surface);border-radius:8px}
+    .mypreds::-webkit-scrollbar-thumb:hover{background:var(--accent)}
     .mp{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)}
     .mp:last-child{border:0} .st-open{color:var(--blue)} .st-won{color:var(--green)} .st-lost{color:var(--red)}
     .slip{position:fixed;left:0;right:0;bottom:0;background:rgba(14,14,20,.97);border-top:1px solid var(--border);backdrop-filter:blur(8px);padding:12px 16px;transform:translateY(110%);transition:transform .18s}

@@ -14,6 +14,7 @@
     "markets": "tsx src/markets-server.ts",
     "start:markets": "node dist/markets-server.js",
     "txline:smoke": "tsx scripts/txline-smoke.ts",
+    "fan": "tsx src/fan-server.ts",
     "build": "tsc && tsc-alias",
     "test": "vitest run",
     "lint": "eslint .",

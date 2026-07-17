@@ -135,6 +135,18 @@ export async function beginVerification(
     captchaSentInDm = await sendTaskDm();
     if (!captchaSentInDm) {
       await transitionState(verification.verificationId, VerificationState.DEEP_LINK_SENT);
+      // The user has DMs disabled (or never started the bot) and is muted — without
+      // this button in the group they would have no path to verification at all.
+      const deepLink = `https://t.me/${botUsername}?start=verify_${verification.verificationId}`;
+      try {
+        await api.sendMessage(
+          Number(group.tgGroupId),
+          `${user.first_name}, I couldn't message you — tap below to verify and unlock the chat.`,
+          { reply_markup: new InlineKeyboard().url("Verify to join →", deepLink) },
+        );
+      } catch {
+        /* group post is best-effort; the TTL sweep still cleans up unverified users */
+      }
     }
   } else {
     captchaSentInDm = await sendTaskDm();

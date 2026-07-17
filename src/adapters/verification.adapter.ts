@@ -255,6 +255,17 @@ export async function hasPassedVerification(
   return res.rows.length > 0;
 }
 
+/** True if the user completed a verification (any group) — used to answer stray DMs instead of silence. */
+export async function hasAnyCompletedVerification(tgUserId: bigint): Promise<boolean> {
+  const res = await db.query(
+    `SELECT 1 FROM verifications
+     WHERE tg_user_id = $1 AND state IN ('PASSED', 'ADMITTED')
+     LIMIT 1`,
+    [tgUserId.toString()],
+  );
+  return res.rows.length > 0;
+}
+
 /** Rate limit window: one verification attempt per Telegram user per group. */
 const GROUP_ATTEMPT_WINDOW = "12 hours";
 

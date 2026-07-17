@@ -9,6 +9,15 @@
 
 ## Changelog
 
+### July 17, 2026 — demo-hardening audit (edge-case DM handling)
+- Non-text DMs (photo/sticker/voice/file) and whitespace-only replies during an active verification now get a plain text nudge instead of silence; neither reaches Kimi (`message.ts`).
+- Group deleted mid-verification fails closed with "This verification is no longer active." instead of silently dropping the reply.
+- Already-verified users (PASSED/ADMITTED, new `hasAnyCompletedVerification`) who DM the bot with no active flow get "You're already verified" instead of silence.
+- Conversational close now sends the agent's closing line — previously dropped — or a neutral "one moment while we verify" fallback before scoring (`process-text-response.ts`).
+- Open-join users whose opening DM fails (DMs disabled) get a deep-link "Verify to join →" button posted in the group — previously muted with no path forward (`begin-verification.ts`).
+- captcha-agent falls back to a generic experience question if the advertiser brief is ever empty.
+- Audited as already-correct: edited_message updates are ignored (no handler registered), legacy `conversation_turn = 0` rows route through the single-shot path, and every Telegram mute/unmute/kick call is try/caught + logged.
+
 ### July 17, 2026 — enriched task_template brief for the captcha agent
 - Buy agent now produces a structured task-design brief — `{goal, targetSignal, openingPrompt, thinResponseExamples}` — stored in new JSONB column `advertiser_budgets.task_template` (`migrations/2026-07-17-task-template-jsonb.sql`; the spec's "campaigns" table is advertiser_budgets here). `task_text` intentionally stays TEXT: it is read as a plain string in 8 call sites, so the enriched object got its own column instead of a type conversion; legacy rows (NULL) fall back to task_text unchanged.
 - TS-validated in `buildTaskTemplate()` (buy-assistant.ts): openingPrompt required, else falls back to `{openingPrompt: <raw text>}`.

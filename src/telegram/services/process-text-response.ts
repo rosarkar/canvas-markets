@@ -319,6 +319,15 @@ async function processConversationalResponse(
     return { outcome: "re_prompted" };
   }
 
-  // Close: the unchanged quality gate scores the whole transcript.
+  // Close: send the agent's closing line (or a neutral fallback) so the user isn't
+  // left hanging while the quality gate scores the whole transcript.
+  try {
+    await api.sendMessage(
+      Number(verification.tgUserId),
+      agentMessage || "Thanks — one moment while we verify your response.",
+    );
+  } catch {
+    /* DM failure must not block scoring */
+  }
   return finalize(api, verification, scoringPrompt, formatTranscript(history));
 }

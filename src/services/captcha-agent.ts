@@ -48,9 +48,12 @@ function parseBrief(advertiserBrief: string): StructuredBrief | null {
   }
 }
 
+const DEFAULT_BRIEF =
+  "Tell us a bit about your experience in this space and what brings you to this community.";
+
 function describeBrief(advertiserBrief: string): string {
   const structured = parseBrief(advertiserBrief);
-  if (!structured) return `Topic brief from the sponsor: ${advertiserBrief}`;
+  if (!structured) return `Topic brief from the sponsor: ${advertiserBrief.trim() || DEFAULT_BRIEF}`;
   const lines = ["Sponsor brief:"];
   if (structured.goal) lines.push(`- Goal: ${structured.goal}`);
   if (structured.targetSignal) lines.push(`- A good response looks like: ${structured.targetSignal}`);

@@ -5,6 +5,7 @@ import {
   getActiveDmVerificationForUser,
   getActiveVerificationForUser,
   getVerificationByToken,
+  hasAnyCompletedVerification,
   hasPassedVerification,
   transitionState,
 } from "@/adapters/verification.adapter.js";
@@ -43,6 +44,18 @@ export function registerMessageHandler(bot: Bot): void {
       return;
     }
 
+    // Non-text DMs (photo, sticker, voice, file…) during an active verification get a
+    // plain nudge instead of silence — the flows below are all text-only.
+    if (chat.type === "private" && ctx.message.text == null && !ctx.message.web_app_data) {
+      const verification = await getActiveDmVerificationForUser(BigInt(from.id));
+      if (verification) {
+        await ctx.reply("Please reply with text to complete your verification.");
+        return;
+      }
+      await next();
+      return;
+    }
+
     // Open-text/rank/binary-reasoning verification replies in DM
     if (chat.type === "private" && ctx.message.text && !ctx.message.text.startsWith("/")) {
       if (
@@ -60,6 +73,12 @@ export function registerMessageHandler(bot: Bot): void {
         if (hasActiveRegisterSession(from.id)) {
           const result = await handleRegisterMessage(from.id, text, buildResolveGroupFn(ctx.api));
           await ctx.reply(result.reply, { parse_mode: "Markdown" });
+          return;
+        }
+
+        // No active flow claimed the text — answer already-verified users instead of silence.
+        if (await hasAnyCompletedVerification(BigInt(from.id))) {
+          await ctx.reply("You're already verified — welcome to the group.");
           return;
         }
       }
@@ -104,13 +123,21 @@ async function handleDmTextResponse(
   ctx: { from: { id: number }; api: import("grammy").Bot["api"]; reply: (text: string, extra?: object) => Promise<unknown> },
   text: string,
 ): Promise<boolean> {
-  if (!text) return false;
-
   const verification = await getActiveDmVerificationForUser(BigInt(ctx.from.id));
   if (!verification) return false;
 
+  // Whitespace-only replies never reach Kimi — nudge instead.
+  if (!text) {
+    await ctx.reply("Please send a text reply to continue.");
+    return true;
+  }
+
   const group = await getGroupById(verification.groupId);
-  if (!group) return false;
+  if (!group) {
+    // Group deleted mid-verification — fail closed with a message, not silence.
+    await ctx.reply("This verification is no longer active.");
+    return true;
+  }
 
   const groupTitle = group.groupTitle ?? "the group";
 

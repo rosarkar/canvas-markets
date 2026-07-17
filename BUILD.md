@@ -9,6 +9,13 @@
 
 ## Changelog
 
+### July 17, 2026 — conversational /register (Kimi-powered owner onboarding)
+- DM `/register` (which previously just printed instructions) now runs a Kimi-driven conversation via new `src/services/register-assistant.ts` (tested in `register-assistant.test.ts`), collecting group link, topic, Base payout wallet, and price per verification in any order. In-group `/register` and auto-registration are unchanged.
+- All validation is TypeScript-side (Kimi only extracts): link must be `t.me/`/`@`, wallet must be a 42-char 0x hex address, price ≥ $0.10. The `registerGroup` write fires only on an explicit "confirm"/"yes" with all four fields valid; malformed Kimi JSON gets a retry reply without advancing session state.
+- Group links resolve to a real chat id via `getChat` (`buildResolveGroupFn` in `register.ts`); unresolvable/private-hash links fall back to the in-group `/register` instruction.
+- New `groups.min_price_micro` column (owner-stated price, USDC microunits) — `migrations/2026-07-17-group-min-price.sql` + idempotent equivalent in `schema.ts`.
+- DM routing in `message.ts`: verification replies keep priority; only when no active verification claims the text does an open registration session receive it.
+
 ### July 17, 2026 — conversational captcha (multi-turn dialogue agent)
 - Single-shot captcha replaced with a multi-turn conversation: a dialogue agent (new `src/services/captcha-agent.ts`, tested in `captcha-agent.test.ts`) drives the DM exchange; the Kimi quality gate is unchanged and scores the full transcript at close.
 - Agent opens with a natural question generated from the advertiser brief (template prompt → campaign task_text → group topic fallback), probes once or twice on vague/thin/pattern-like answers, and is hard-capped at 3 agent turns. JSON parse failures fail closed.
@@ -210,6 +217,7 @@ A Fable 5 repo audit surfaced six bugs not previously tracked. All six were fixe
 - Group owner DM menu (6 buttons, group-scoped)
 - Group picker for multi-group owners
 - Dual-identity mode selector
+- Conversational /register in DM — Kimi collects link/topic/wallet/price, TS validates, explicit confirm gates the DB write (July 17, 2026; in-group /register unchanged)
 - Advertiser buy flow (guided button flow)
 - Campaigns list with withdraw/pause/resume/top-up
 - `/start` escape hint on all flow screens

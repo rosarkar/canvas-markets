@@ -9,7 +9,12 @@ import {
   transitionState,
 } from "@/adapters/verification.adapter.js";
 import { VerificationState } from "@/services/verification-states.js";
+import {
+  handleRegisterMessage,
+  hasActiveRegisterSession,
+} from "@/services/register-assistant.js";
 import { hasActiveBuyAgentSession } from "@/telegram/handlers/buy-agent.js";
+import { buildResolveGroupFn } from "@/telegram/handlers/register.js";
 import { hasActiveBuySession } from "@/telegram/handlers/buy.js";
 import { hasActivePendingMenuWallet } from "@/telegram/handlers/menu.js";
 import { hasActivePendingRulesPrompt } from "@/telegram/handlers/register.js";
@@ -47,8 +52,16 @@ export function registerMessageHandler(bot: Bot): void {
         !hasActivePendingMenuWallet(from.id)
       ) {
         const text = ctx.message.text.trim();
+        // Verification takes priority: a user mid-verification never routes to the
+        // registration assistant, even with a session open.
         const handled = await handleDmTextResponse(ctx, text);
         if (handled) return;
+
+        if (hasActiveRegisterSession(from.id)) {
+          const result = await handleRegisterMessage(from.id, text, buildResolveGroupFn(ctx.api));
+          await ctx.reply(result.reply, { parse_mode: "Markdown" });
+          return;
+        }
       }
     }
 

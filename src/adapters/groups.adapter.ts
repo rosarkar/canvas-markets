@@ -14,6 +14,8 @@ export interface GroupRow {
   lastWelcomeMessageId: bigint | null;
   portalInviteLink: string | null;
   rules: string[];
+  /** Owner-stated price per verification in USDC microunits (conversational /register). */
+  minPriceMicro: bigint | null;
 }
 
 function mapGroup(r: Record<string, unknown>): GroupRow {
@@ -32,6 +34,7 @@ function mapGroup(r: Record<string, unknown>): GroupRow {
         : null,
     portalInviteLink: (r.portal_invite_link as string | null) ?? null,
     rules: (r.rules as string[] | null) ?? [],
+    minPriceMicro: r.min_price_micro != null ? BigInt(r.min_price_micro as string | bigint) : null,
   };
 }
 
@@ -41,15 +44,17 @@ export async function registerGroup(input: {
   ownerTgId: bigint;
   verificationTaskText: string;
   groupTitle?: string;
+  minPriceMicro?: bigint;
 }): Promise<GroupRow> {
   const res = await db.query(
-    `INSERT INTO groups (tg_group_id, owner_wallet, owner_tg_id, verification_task_text, group_title)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO groups (tg_group_id, owner_wallet, owner_tg_id, verification_task_text, group_title, min_price_micro)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (tg_group_id) DO UPDATE SET
        owner_wallet = EXCLUDED.owner_wallet,
        owner_tg_id = EXCLUDED.owner_tg_id,
        verification_task_text = EXCLUDED.verification_task_text,
        group_title = COALESCE(EXCLUDED.group_title, groups.group_title),
+       min_price_micro = COALESCE(EXCLUDED.min_price_micro, groups.min_price_micro),
        is_active = true
      RETURNING *`,
     [
@@ -58,6 +63,7 @@ export async function registerGroup(input: {
       input.ownerTgId.toString(),
       input.verificationTaskText,
       input.groupTitle ?? null,
+      input.minPriceMicro?.toString() ?? null,
     ],
   );
   return mapGroup(res.rows[0]!);

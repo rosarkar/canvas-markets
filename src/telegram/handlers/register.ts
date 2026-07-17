@@ -1,5 +1,11 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, type Api } from "grammy";
 
+import {
+  handleRegisterMessage,
+  hasActiveRegisterSession,
+  startRegisterSession,
+  type ResolveGroupFn,
+} from "@/services/register-assistant.js";
 import {
   getGroupByTgId,
   getGroupsByOwnerTgId,
@@ -38,6 +44,25 @@ function parseWallet(input: string | undefined): string | null {
   const trimmed = input?.trim();
   if (!trimmed || !WALLET_RE.test(trimmed)) return null;
   return trimmed.toLowerCase();
+}
+
+/**
+ * Resolves a user-stated group link (t.me/... or @handle) to a real chat via
+ * getChat. Private invite-hash links (t.me/+...) can't be resolved this way.
+ */
+export function buildResolveGroupFn(api: Api): ResolveGroupFn {
+  return async (groupLink: string) => {
+    let handle = groupLink.trim().replace(/^https?:\/\//i, "").replace(/^t\.me\//i, "@");
+    if (!handle.startsWith("@")) handle = `@${handle}`;
+    if (handle.startsWith("@+") || handle.toLowerCase().startsWith("@joinchat")) return null;
+    try {
+      const chat = await api.getChat(handle);
+      if (chat.type !== "group" && chat.type !== "supergroup") return null;
+      return { tgGroupId: BigInt(chat.id), title: chat.title ?? null };
+    } catch {
+      return null;
+    }
+  };
 }
 
 async function isUserGroupAdmin(
@@ -108,16 +133,18 @@ export function registerRegisterHandler(bot: Bot): void {
     if (!fromId) return;
 
     if (chat.type === "private") {
-      await ctx.reply(
-        "To register your group:\n\n" +
-          "1. Add @CanvasProtocolBot to your group\n" +
-          `2. ${ADMIN_CHECKLIST}\n` +
-          "3. Run /register inside the group\n\n" +
-          "Optional: /register 0xYourBaseWallet (in the group) to set payout wallet now.\n" +
-          "Or DM /wallet 0xYourBaseWallet after registering." +
-          BACK_FOOTER,
-        { parse_mode: "Markdown" },
-      );
+      // Conversational registration: an active session treats /register as a
+      // continuation; otherwise start fresh with the assistant's opening message.
+      if (hasActiveRegisterSession(fromId)) {
+        const result = await handleRegisterMessage(
+          fromId,
+          "I'd like to continue my registration.",
+          buildResolveGroupFn(bot.api),
+        );
+        await ctx.reply(result.reply, { parse_mode: "Markdown" });
+        return;
+      }
+      await ctx.reply(startRegisterSession(fromId));
       return;
     }
 

@@ -1,13 +1,56 @@
 # Canvas Protocol — Build Log
 **Last updated:** July 7, 2026  
 **Repo:** `rosarkar/canvas-ai` · **Branch:** `main` (auto-deploys to Railway)  
-**Infrastructure:** Railway — Rohit's workspace (canvas-ai + Postgres, `canvas-ai-production-eae7.up.railway.app`) · Base mainnet · `@CanvasProtocolBot`  
+**Infrastructure:** Railway — Rohit's workspace (canvas-ai + Postgres, `canvas-ai-production-eae7.up.railway.app`) · Base mainnet · `@CanvasVerificationBot`  
 **Smart contract:** `CanvasEscrowV0.sol` at `0xf808b264E13Bf809C8e86afaF4e14c200931101E` (verified on Basescan; relayer `0xbD5f…56d9`; includes the first-depositor guard)  
 **Deprecated:** `fweekshow/canvas-ai` repo, Mateo's-workspace Railway (suspended), escrows `0x262a…5890` (partial bytecode) and `0x13aA…561B` (pre-guard, 0 balance)
 
 ---
 
 ## Changelog
+
+### July 17, 2026 — Conversational captcha flow
+
+**New services**
+- captcha-agent.ts — multi-turn Kimi conversation agent for end-user verification. Generates opening question from advertiser brief, probes thin responses, closes after 2–4 turns, sends full transcript to Kimi scorer. Hard cap of 3 agent turns enforced in code, not just prompt. Fails closed on any parse error or Kimi failure.
+- register-assistant.ts — Kimi-powered conversational registration flow for group owners. Collects group link, topic, payout wallet, and price per verification across multiple turns. TypeScript validates all fields. Fires DB write only on explicit confirmation.
+
+**Schema changes**
+- verifications: added conversation_history JSONB DEFAULT '[]' and conversation_turn INT DEFAULT 0
+- advertiser_budgets: added task_template JSONB column alongside existing task_text. task_template stores structured brief (goal, targetSignal, openingPrompt, thinResponseExamples) produced by buy-assistant at campaign creation. task_text preserved for all legacy consumers.
+- groups: added min_price_micro BIGINT column for price per verification set during registration
+
+**Updated flows**
+- begin-verification.ts: opens every join with a Kimi-generated question from the advertiser brief. Falls back to legacy static task DM if agent fails on first turn, so no joins are blocked.
+- process-text-response.ts: conversational rows (conversation_turn > 0) route through multi-turn handler. Legacy rows (conversation_turn = 0) unchanged.
+- buy-assistant.ts: final task design step now produces structured JSONB brief with goal, targetSignal, openingPrompt, and thinResponseExamples instead of plain string.
+- message.ts: routing priority is buy session → register session → active verification → register assistant continuation. Verification takes strict priority over registration.
+
+**Defensive hardening**
+- Non-text messages (photo, sticker, voice, file) during active verification reply with guidance instead of silently failing
+- Whitespace-only replies rejected before reaching Kimi
+- Empty advertiser brief substitutes generic fallback question
+- Failed opening DM (user has DMs disabled) now posts a deep-link verify button in the group chat instead of leaving the user muted with no path forward
+- Empty Kimi closing message substituted with neutral fallback before scoring begins
+- Deleted group or cancelled campaign mid-conversation fails closed with clear message
+- Completed verification users (PASSED/ADMITTED) receive acknowledgement instead of silence
+
+**Test count: 54 passing**
+
+---
+
+## Known Issues
+
+### Must fix before permissionless launch
+
+- **In-memory session TTL missing** — a user who starts /buy or /register and walks away never has their session cleaned up. Until process restart, their DM replies are routed to the stale session instead of any active verification. Fix: add an idle expiry (suggested: 30 minutes) to all in-memory session Maps in buy-agent.ts and register.ts. This is the only known issue that can silently suppress verification replies for a real user.
+
+### Known gaps (not blocking)
+
+- Concurrent join shadowing — if a user joins two groups in quick succession, DM replies route to the most recent verification. The older verification becomes reachable again after the newer one closes or expires. Fixing this would require group disambiguation in DMs, which requires UX design.
+- No abandonment flow for /buy — a user who confirms a campaign but never funds escrow has a campaign row that stays open. No timeout or expiry currently exists.
+
+---
 
 ### July 17, 2026 — demo-hardening audit (edge-case DM handling)
 - Non-text DMs (photo/sticker/voice/file) and whitespace-only replies during an active verification now get a plain text nudge instead of silence; neither reaches Kimi (`message.ts`).
@@ -480,7 +523,7 @@ Alliance DAO, Base Batches, Bankr. Traditional seed VCs deferred until live reve
 - Railway project (deprecated, Mateo's workspace, suspended): `bef22e72-bab1-4682-8495-c534cddedf45`
 - Canvas Test group: `tg_group_id -5145298837`
 - Canvas / Bankr group: `tg_group_id -5501340634` (group_id 14, active)
-- Bot: `@CanvasProtocolBot`
+- Bot: `@CanvasVerificationBot`
 - Domain: `canvas-protocol.com` (Cloudflare + Vercel)
 
 ---

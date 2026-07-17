@@ -13,7 +13,8 @@
  */
 import { Router, type Request, type Response } from "express";
 
-import { getOddsFeed, type MatchOdds, type MarketOutcome } from "@/services/txodds.client.js";
+import { type MatchOdds, type MarketOutcome } from "@/services/txodds.client.js";
+import { resolveOddsFeed } from "@/services/odds-feed.js";
 import { assessSelection, lockInHedge } from "@/services/risk/index.js";
 import { parseBetIntent, explainAssessment } from "@/services/markets-agent.js";
 import { settle, type SettlementLegInput } from "@/services/markets-settle.js";
@@ -38,7 +39,7 @@ function findOutcome(
 
 marketsRouter.get("/api/markets", async (_req: Request, res: Response) => {
   try {
-    const feed = getOddsFeed();
+    const feed = (await resolveOddsFeed());
     const matches = await feed.getMatches();
     res.json({
       source: feed.source,
@@ -55,7 +56,7 @@ marketsRouter.get("/api/markets", async (_req: Request, res: Response) => {
 
 marketsRouter.get("/api/markets/match/:id", async (req: Request, res: Response) => {
   try {
-    const match = await getOddsFeed().getMatch(String(req.params.id));
+    const match = await (await resolveOddsFeed()).getMatch(String(req.params.id));
     if (!match) {
       res.status(404).json({ error: "Match not found" });
       return;
@@ -79,7 +80,7 @@ marketsRouter.post("/api/markets/risk", async (req: Request, res: Response) => {
       res.status(400).json({ error: "matchId, outcome and a positive bankroll are required" });
       return;
     }
-    const match = await getOddsFeed().getMatch(matchId);
+    const match = await (await resolveOddsFeed()).getMatch(matchId);
     if (!match) {
       res.status(404).json({ error: "Match not found" });
       return;
@@ -128,7 +129,7 @@ marketsRouter.post("/api/markets/hedge", async (req: Request, res: Response) => 
       res.status(400).json({ error: "matchId, outcome and a positive stake are required" });
       return;
     }
-    const match = await getOddsFeed().getMatch(matchId);
+    const match = await (await resolveOddsFeed()).getMatch(matchId);
     if (!match) {
       res.status(404).json({ error: "Match not found" });
       return;
@@ -176,7 +177,7 @@ marketsRouter.post("/api/markets/intent", async (req: Request, res: Response) =>
       res.status(400).json({ error: "text is required" });
       return;
     }
-    const matches = await getOddsFeed().getMatches();
+    const matches = await (await resolveOddsFeed()).getMatches();
     const intent = await parseBetIntent(text, matches);
     res.json(intent);
   } catch (err) {
@@ -196,7 +197,7 @@ marketsRouter.post("/api/markets/settle", async (req: Request, res: Response) =>
       res.status(400).json({ error: "matchId and a primary { outcome, stake>0 } are required" });
       return;
     }
-    const match = await getOddsFeed().getMatch(matchId);
+    const match = await (await resolveOddsFeed()).getMatch(matchId);
     if (!match) {
       res.status(404).json({ error: "Match not found" });
       return;

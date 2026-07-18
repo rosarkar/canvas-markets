@@ -20,6 +20,7 @@ import type {
 import { TXLINE_NETWORKS } from "./program.js";
 import { loadOrCreateKeypair } from "./wallet.js";
 import { TxLineClient, type TxLineFixture, type TxLineOddsPayload } from "./client.js";
+import { epochDayFromMs } from "./verify.js";
 
 /** Map TxLINE outcome labels to our canonical keys. */
 function outcomeKey(name: string, index: number, count: number): string {
@@ -98,6 +99,8 @@ export class TxLineFeed implements OddsFeed {
   readonly source: FeedSource = "txodds-live";
   private client: TxLineClient | null = null;
   private fixtureIdByMatch = new Map<string, number>();
+  private cache: { at: number; data: MatchOdds[] } | null = null;
+  private readonly cacheTtlMs = 30_000;
 
   /** Establish the on-chain subscription + API token. Throws on failure. */
   async ensureReady(): Promise<void> {
@@ -113,37 +116,55 @@ export class TxLineFeed implements OddsFeed {
   private async load(): Promise<MatchOdds[]> {
     if (!this.client) await this.ensureReady();
     const client = this.client!;
-    const fixtures = await client.getFixtures();
-    const now = Date.now() / 1000;
-    const upcoming = fixtures
-      .filter((f) => /world cup|friendl/i.test(f.Competition))
-      .sort((a, b) => a.StartTime - b.StartTime)
-      .slice(0, 16);
-    const list = upcoming.length ? upcoming : fixtures.slice(0, 16);
 
-    const out: MatchOdds[] = [];
-    for (const fx of list) {
-      let odds: TxLineOddsPayload[] = [];
-      try {
-        odds = await client.getOdds(fx.FixtureId);
-      } catch {
-        /* no odds yet for this fixture */
-      }
-      const mo = toMatchOdds(fx, odds, this.source);
-      this.fixtureIdByMatch.set(mo.id, fx.FixtureId);
-      out.push(mo);
+    // A single snapshot often carries only a handful of fixtures, so pull a
+    // window of days and de-dupe — many more priced matches then surface.
+    const baseDay = epochDayFromMs(Date.now());
+    const daySnapshots = await Promise.all([
+      client.getFixtures().catch(() => [] as TxLineFixture[]),
+      ...Array.from({ length: 21 }, (_, i) =>
+        client.getFixtures({ startEpochDay: baseDay + i }).catch(() => [] as TxLineFixture[]),
+      ),
+    ]);
+    const byId = new Map<number, TxLineFixture>();
+    for (const snap of daySnapshots) {
+      for (const f of snap) if (!byId.has(f.FixtureId)) byId.set(f.FixtureId, f);
     }
-    void now;
-    return out;
+
+    // Prefer World Cup / internationals, then everything else, soonest first.
+    const pref = (f: TxLineFixture) =>
+      /world cup|friendl|international|uefa|copa|qualif/i.test(f.Competition) ? 0 : 1;
+    const list = [...byId.values()]
+      .sort((a, b) => pref(a) - pref(b) || a.StartTime - b.StartTime)
+      .slice(0, 48);
+
+    // Fetch odds in parallel; lead the board with matches that actually have a price.
+    const out = await Promise.all(
+      list.map(async (fx) => {
+        let odds: TxLineOddsPayload[] = [];
+        try {
+          odds = await client.getOdds(fx.FixtureId);
+        } catch {
+          /* no odds yet for this fixture */
+        }
+        const mo = toMatchOdds(fx, odds, this.source);
+        this.fixtureIdByMatch.set(mo.id, fx.FixtureId);
+        return mo;
+      }),
+    );
+    return out.sort((a, b) => (b.markets.length ? 1 : 0) - (a.markets.length ? 1 : 0));
   }
 
   async getMatches(): Promise<MatchOdds[]> {
-    return this.load();
+    // Short cache so repeated page loads don't re-hit ~70 endpoints each time.
+    if (this.cache && Date.now() - this.cache.at < this.cacheTtlMs) return this.cache.data;
+    const data = await this.load();
+    this.cache = { at: Date.now(), data };
+    return data;
   }
 
   async getMatch(id: string): Promise<MatchOdds | undefined> {
-    const all = await this.load();
-    return all.find((m) => m.id === id);
+    return (await this.getMatches()).find((m) => m.id === id);
   }
 
   /** Expose the underlying TxLINE fixture id for a match (for score verification). */

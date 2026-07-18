@@ -122,7 +122,7 @@ export const config: Config = {
   markets: {
     txoddsApiKey: process.env.TXODDS_API_KEY?.trim() ?? "",
     txoddsBaseUrl: process.env.TXODDS_BASE_URL?.trim() ?? "https://api.txodds.net",
-    liveSettlement: (process.env.MARKETS_LIVE_SETTLEMENT?.trim() ?? "false") === "true",
+    liveSettlement: (process.env.MARKETS_LIVE_SETTLEMENT?.trim() || "true") === "true",
     simHorizonBets: Number(process.env.MARKETS_SIM_HORIZON_BETS ?? "40"),
   },
   solana: {

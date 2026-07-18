@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Link from 'next/link'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Nav from '../components/Nav'
 import { enrichMatches, SAMPLE_MATCHES, kelly, type Match, type Outcome } from '../lib/risk'
@@ -168,6 +169,13 @@ export default function Home() {
             Risk-managed World Cup copilot — TxLINE StablePrice → Kelly sizing → Bankr settlement
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
+              fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, textDecoration: 'none',
+              color: 'var(--accent)', background: 'var(--accent-bg)', border: '0.5px solid rgba(233,168,76,.4)',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+            }}>
+              <i className="ti ti-shield-check" aria-hidden="true" style={{ fontSize: 13 }} /> Verify on-chain
+            </Link>
             <span style={{
               fontSize: 11, padding: '3px 8px', borderRadius: 6,
               border: `0.5px solid ${feed.live ? 'rgba(74,222,128,.35)' : 'var(--border)'}`,

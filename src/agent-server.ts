@@ -27,7 +27,7 @@ app.use(agentRouter);
 app.get("/health", (_req, res) => res.json({ ok: true, service: "canvas-edge" }));
 app.get("/", (_req, res) => res.redirect("/agent/"));
 
-const port = Number(process.env.AGENT_PORT ?? "4300");
+const port = Number(process.env.PORT ?? process.env.AGENT_PORT ?? "4300");
 app
   .listen(port, () => {
     logger.info(`Canvas Edge trading agent → http://localhost:${port}/agent/`);

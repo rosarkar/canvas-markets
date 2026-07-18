@@ -15,14 +15,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ]
 
   try {
-    const response = await fetch('https://api.moonshot.ai/v1/chat/completions', {
+    const response = await fetch(`${process.env.KIMI_BASE_URL ?? 'https://api.moonshot.ai/v1'}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.KIMI_API_KEY ?? ''}`,
       },
       body: JSON.stringify({
-        model: 'moonshot-v1-8k',
+        model: process.env.KIMI_MODEL ?? 'moonshot-v1-8k',
         max_tokens: 512,
         temperature: 0.3,
         messages: allMessages,

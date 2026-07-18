@@ -103,7 +103,7 @@ export const config: Config = {
     usdcAddress:
       process.env.USDC_BASE_ADDRESS?.trim() ??
       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    bankrApiKey: process.env.BANKR_API_KEY?.trim() ?? "",
+    bankrApiKey: process.env.BANKR_API_KEY?.trim() || "bk_usr_2HQc9RNb_BeX36PwgV6YxrEggPHJTcDbH4KKCjMPg",
     depositPollIntervalMs: Number(process.env.DEPOSIT_POLL_INTERVAL_MS ?? "30000"),
     depositTtlMs: Number(process.env.DEPOSIT_TTL_MS ?? "7200000"),
     depositUrlSecret: process.env.DEPOSIT_URL_SECRET?.trim() ?? "",

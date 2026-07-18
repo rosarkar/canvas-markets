@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { _reset, addPrediction, getOrCreatePlayer, leaderboard, settleMatch } from "./store.js";
+import {
+  _reset,
+  addPrediction,
+  getOrCreatePlayer,
+  getPlayer,
+  isSettled,
+  leaderboard,
+  rankOf,
+  settleMatch,
+} from "./store.js";
 
 const base = {
   matchId: "m1",
@@ -50,5 +59,34 @@ describe("fan store", () => {
     const board = leaderboard();
     expect(board[0].handle).toBe("hi");
     expect(board[board.length - 1].handle).toBe("lo");
+  });
+
+  it("getPlayer never mints — viewing a name doesn't pollute the leaderboard", () => {
+    expect(getPlayer("ghost")).toBeNull();
+    expect(leaderboard()).toHaveLength(0);
+    // Only a real prediction puts you on the board.
+    addPrediction({ player: "real", ...base, stakePoints: 100 });
+    expect(leaderboard().map((p) => p.handle)).toEqual(["real"]);
+  });
+
+  it("settlement is idempotent — a result can never be re-drawn", () => {
+    addPrediction({ player: "alice", ...base, stakePoints: 100 });
+    const first = settleMatch("m1", "HOME", { verified: true, proofRef: "pda-A" });
+    expect(getOrCreatePlayer("alice").points).toBe(1100);
+    // A second settle with a DIFFERENT winner must be ignored (frozen result).
+    const second = settleMatch("m1", "AWAY", { verified: true, proofRef: "pda-B" });
+    expect(second.winningOutcome).toBe("HOME");
+    expect(second).toEqual(first);
+    expect(getOrCreatePlayer("alice").points).toBe(1100); // not re-applied
+    expect(isSettled("m1")).toBe(true);
+  });
+
+  it("rankOf reflects standing and is null for non-players", () => {
+    addPrediction({ player: "top", ...base, stakePoints: 100 });
+    settleMatch("m1", "HOME", { verified: true, proofRef: "pda" }); // top → 1100
+    addPrediction({ player: "mid", ...base, matchId: "m2", stakePoints: 100 });
+    expect(rankOf("top")).toBe(1);
+    expect(rankOf("mid")).toBe(2);
+    expect(rankOf("nobody")).toBeNull();
   });
 });

@@ -116,7 +116,7 @@ export function registerPredictHandler(bot: Bot): void {
       await ctx.answerCallbackQuery({ text: "Prediction locked in!" });
       await ctx.editMessageText(
         `✅ *${prediction.selectionLabel}* for *${prediction.stakePoints} pts* @ ${o.decimalOdds.toFixed(2)}\n` +
-          `Win → ${Math.round(prediction.stakePoints * o.decimalOdds)} pts, verified on-chain.\n\n` +
+          `Win → ${Math.round(prediction.stakePoints * o.decimalOdds)} pts. Settled provably-fairly against TxLINE's on-chain Merkle root.\n\n` +
           `Balance: *${player.points}* pts · /leaderboard · /mypicks`,
         { parse_mode: "Markdown" },
       );

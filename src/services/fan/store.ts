@@ -35,12 +35,14 @@ export interface Player {
   predictions: number;
 }
 
-const STARTING_POINTS = 1000;
+export const STARTING_POINTS = 1000;
 /** Points → USDC reward rate for winners (e.g. 1000 pts profit = $1 reward). */
 const USD_MICRO_PER_POINT = 1_000; // 0.001 USDC per point
 
 const predictions = new Map<string, Prediction>();
 const players = new Map<string, Player>();
+/** Settled matches, memoised so a result can never be re-drawn (provably-fair). */
+const settledResults = new Map<string, SettleSummary>();
 let counter = 0;
 
 export function getOrCreatePlayer(handle: string): Player {
@@ -51,6 +53,16 @@ export function getOrCreatePlayer(handle: string): Player {
     players.set(key, p);
   }
   return p;
+}
+
+/** Read a player WITHOUT creating one — so merely viewing a name never mints a leaderboard entry. */
+export function getPlayer(handle: string): Player | null {
+  return players.get(handle.trim().toLowerCase()) ?? null;
+}
+
+/** A synthetic, un-persisted starting card for a name that hasn't played yet. */
+export function startingCard(handle: string): Player {
+  return { handle, points: STARTING_POINTS, wins: 0, losses: 0, streak: 0, bestStreak: 0, predictions: 0 };
 }
 
 export interface AddPredictionInput {
@@ -93,10 +105,22 @@ export function listPredictions(player?: string): Prediction[] {
   return all.filter((p) => p.player.trim().toLowerCase() === key);
 }
 
-export function leaderboard(limit = 20): Player[] {
+/** Only players who have actually staked a prediction rank — no idle 1000-pt names. */
+function rankedPlayers(): Player[] {
   return [...players.values()]
-    .sort((a, b) => b.points - a.points || b.bestStreak - a.bestStreak)
-    .slice(0, limit);
+    .filter((p) => p.predictions > 0)
+    .sort((a, b) => b.points - a.points || b.bestStreak - a.bestStreak);
+}
+
+export function leaderboard(limit = 20): Player[] {
+  return rankedPlayers().slice(0, limit);
+}
+
+/** 1-based rank of a player among all who have predicted, or null if they haven't. */
+export function rankOf(handle: string): number | null {
+  const key = handle.trim().toLowerCase();
+  const idx = rankedPlayers().findIndex((p) => p.handle.trim().toLowerCase() === key);
+  return idx >= 0 ? idx + 1 : null;
 }
 
 export interface SettleSummary {
@@ -109,12 +133,27 @@ export interface SettleSummary {
   totalRewardUsdMicro: number;
 }
 
-/** Settle all open predictions on a match against the (on-chain-verified) result. */
+/** Whether a match has already been settled (its result is now immutable). */
+export function isSettled(matchId: string): boolean {
+  return settledResults.has(matchId);
+}
+
+export function getSettlement(matchId: string): SettleSummary | undefined {
+  return settledResults.get(matchId);
+}
+
+/**
+ * Settle all open predictions on a match against the (on-chain-verified) result.
+ * Idempotent: once a match is settled its winning outcome is frozen — calling
+ * again returns the SAME result (a result can never be re-drawn or "fudged").
+ */
 export function settleMatch(
   matchId: string,
   winningOutcome: string,
   proof: { verified: boolean; proofRef: string },
 ): SettleSummary {
+  const existing = settledResults.get(matchId);
+  if (existing) return existing;
   let settled = 0;
   let winners = 0;
   let totalReward = 0;
@@ -142,7 +181,7 @@ export function settleMatch(
       player.streak = 0;
     }
   }
-  return {
+  const summary: SettleSummary = {
     matchId,
     winningOutcome,
     settled,
@@ -151,6 +190,8 @@ export function settleMatch(
     verified: proof.verified,
     totalRewardUsdMicro: totalReward,
   };
+  settledResults.set(matchId, summary);
+  return summary;
 }
 
 export function stats(): { players: number; predictions: number; open: number } {
@@ -162,5 +203,6 @@ export function stats(): { players: number; predictions: number; open: number } 
 export function _reset(): void {
   predictions.clear();
   players.clear();
+  settledResults.clear();
   counter = 0;
 }

@@ -16,8 +16,11 @@ web app *and* Telegram (Canvas's native home).
 - **Predict** — tap a match, pick an outcome (odds from TxLINE StablePrice), stake points.
 - **Win** — correct picks pay **points × odds**; winners' profit maps to a claimable
   **USDC reward** via Canvas's existing payout rail / Bankr.
-- **Compete** — streaks 🔥, records, and a live **leaderboard** 🏆.
-- **Trust it** — every settlement is **on-chain-verified** (TxLINE proof), shown as a badge.
+- **Compete** — streaks 🔥, records, your live **rank**, and a shared **leaderboard** 🏆.
+- **Trust it** — every settlement ships with a **real Merkle inclusion proof** you can open
+  and re-verify by hand (leaf → sibling hops → root), with a one-click link to the anchoring
+  account on **Solana Explorer**. Results are derived *deterministically*, so re-settling
+  yields the identical, verifiable outcome — it can't be re-drawn or fudged.
 
 ## Two surfaces
 
@@ -73,9 +76,27 @@ src/telegram/handlers/predict.ts   /predict game in Telegram
 src/services/txline/*              shared real TxLINE (Solana) foundation + on-chain verify
 ```
 
+## Provably fair — a real, inspectable proof
+
+Settlement returns a self-describing **`ProofArtifact`** (`src/services/txline/verify.ts` +
+`merkle.ts`) that tiers itself honestly and never overclaims:
+
+- **`verified-onchain`** — the day's root was read from Solana *and* a Merkle proof recomputed
+  to it (live TxLINE path).
+- **`root-anchored`** — the day-root account was read from Solana, but the recompute couldn't be
+  finalized in this environment.
+- **`demonstration`** — sample data: a **real** Merkle inclusion proof over the day's results,
+  recomputed and verified locally — the exact mechanism the live path runs against the on-chain
+  root. Clearly labelled; never called "on-chain-verified".
+
+The "see the proof" panel shows the leaf preimage, its SHA-256 hash, every sibling hop, the
+recomputed root, and a Solana Explorer link to the `daily_scores_merkle_roots` account. The
+Merkle logic is unit-tested for soundness and tamper-evidence (`merkle.test.ts`, `verify.test.ts`).
+
 ## Honesty
 
-Free-to-play points. On sample fixtures the result is drawn from the fair odds for the demo
-and labelled as such; with a funded TxLINE feed the on-chain-verified result settles the game.
-Settlement always cites its `daily_scores_roots` proof account. Rewards use Canvas's real Base
-USDC payout rail when configured. No fabricated results or traction.
+Free-to-play points. On sample fixtures the result is derived **deterministically** from the
+day's fair odds (reproducible — re-settling yields the identical, verifiable outcome), and the
+proof is a genuine Merkle inclusion proof labelled as sample data. With a funded TxLINE feed the
+day's root is read live from Solana and the proof is checked against it. Rewards use Canvas's
+real Base USDC payout rail when configured. No fabricated results or traction.

@@ -68,8 +68,38 @@
     .slip input{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px 12px;width:110px;font-size:14px}
     .slip .quick{display:flex;gap:6px} .slip .quick button{background:transparent;color:var(--muted);border-color:var(--border);padding:6px 10px;font-size:12px}
     .muted{color:var(--muted)} .disclaimer{color:var(--muted-2);font-size:11.5px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
-    .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);background:var(--surface-2);border:1px solid var(--accent);color:var(--text);padding:10px 16px;border-radius:10px;font-size:13px;transition:transform .2s;z-index:20}
+    .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);background:var(--surface-2);border:1px solid var(--accent);color:var(--text);padding:10px 16px;border-radius:10px;font-size:13px;transition:transform .2s;z-index:60}
     .toast.show{transform:translateX(-50%) translateY(0)}
+    .result .verify-link{color:var(--accent);cursor:pointer;font-weight:600;font-size:11px;text-decoration:underline}
+    /* provably-fair proof modal */
+    .modal{position:fixed;inset:0;background:rgba(4,4,7,.72);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+    .modal.show{display:flex}
+    .sheet{background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:20px;scrollbar-width:thin;scrollbar-color:#2c2c38 transparent}
+    .sheet::-webkit-scrollbar{width:9px} .sheet::-webkit-scrollbar-thumb{background:#26262f;border:2px solid var(--surface);border-radius:8px}
+    .sheet h3{font-family:var(--serif);font-size:24px;font-weight:600;display:flex;align-items:center;gap:8px}
+    .sheet .close{float:right;cursor:pointer;color:var(--muted);border:1px solid var(--border);background:transparent;border-radius:8px;padding:4px 9px;font-size:13px}
+    .tierbadge{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;margin-top:4px}
+    .tier-verified-onchain{color:var(--green);background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35)}
+    .tier-root-anchored{color:var(--accent);background:var(--accent-bg);border:1px solid rgba(233,168,76,.35)}
+    .tier-demonstration{color:var(--blue);background:rgba(110,168,254,.08);border:1px solid rgba(110,168,254,.3)}
+    .proofnote{font-size:12px;color:var(--muted);margin:10px 0 14px;line-height:1.5}
+    .kv{font-size:11.5px;margin:8px 0}
+    .kv .k{color:var(--muted-2);text-transform:uppercase;letter-spacing:.6px;font-size:10px;font-weight:600}
+    .hash{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;word-break:break-all;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:7px 9px;margin-top:3px}
+    .steps{margin:12px 0}
+    .step{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)}
+    .step:last-child{border:0}
+    .step .dot{flex:0 0 22px;height:22px;border-radius:50%;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:700;margin-top:1px}
+    .step.match .dot{background:rgba(74,222,128,.14);border-color:var(--green);color:var(--green)}
+    .step .body{flex:1;min-width:0}
+    .step .lbl{font-size:11px;color:var(--muted)}
+    .step .h{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--muted);word-break:break-all}
+    .rootrow{margin-top:12px;padding:11px 13px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2)}
+    .rootrow.ok{border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.06)}
+    .rootrow .match{color:var(--green);font-weight:600;font-size:12.5px}
+    .explorer{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:12.5px;color:var(--accent);font-weight:600}
+    .selfverify{margin-top:12px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--border);padding-top:12px}
+    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:55}
   </style>
 </head>
 <body>
@@ -94,7 +124,7 @@
     </div>
     <div>
       <div class="card">
-        <h2 style="font-size:18px">Your card 🎯</h2>
+        <h2 style="font-size:18px">Your card 🎯 <span id="c-rank" class="tierbadge tier-root-anchored" style="display:none;font-size:10px"></span></h2>
         <div class="stat-row"><span class="muted">Points</span><b id="c-pts">1000</b></div>
         <div class="stat-row"><span class="muted">Streak</span><b class="streak" id="c-streak">0 🔥</b></div>
         <div class="stat-row"><span class="muted">Record</span><b id="c-rec">0–0</b></div>
@@ -110,7 +140,7 @@
   </div>
 
   <div class="disclaimer">
-    Free-to-play points. Settlement is provably fair: each result is checked against TxLINE's on-chain Merkle root on Solana (the <code>daily_scores_roots</code> account). On sample fixtures the result is drawn from the fair odds for the demo and labelled accordingly; with a funded TxLINE feed the on-chain-verified result settles automatically. Winners' points map to a claimable USDC reward via Canvas's payout rail / Bankr.
+    Free-to-play points. Settlement is provably fair: every result ships with a real Merkle inclusion proof you can inspect (tap “see the proof”) and re-verify by hand. On sample fixtures the result is derived <em>deterministically</em> from the day's fair odds — reproducible, so re-settling yields the identical, verifiable outcome (it can't be re-drawn or fudged); the proof recomputes to the day's root and cites the on-chain <code>daily_scores_merkle_roots</code> account. With a funded TxLINE feed that root is read live from Solana and the proof is checked against it. Winners' points map to a claimable USDC reward via Canvas's payout rail / Bankr.
   </div>
 </div>
 
@@ -125,6 +155,11 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+
+<div class="modal" id="proofModal">
+  <div class="sheet" id="proofSheet"></div>
+</div>
+<canvas class="confetti" id="confetti"></canvas>
 
 <script type="module">
 const $=(id)=>document.getElementById(id);
@@ -148,9 +183,13 @@ async function loadBoard(){
     const sb=document.getElementById(`s-${m.id}`);if(sb)sb.onclick=()=>settle(m.id);
   });
 }
+const PROOFS={}; // matchId -> last proof bundle (so "see the proof" can reopen)
 function matchCard(m){
   const outs=m.outcomes.map(o=>`<div class="out" id="o-${m.id}-${o.key}"><div class="lab">${o.label}</div><div class="od">${o.decimalOdds.toFixed(2)}</div><div class="pr">${pct(o.fairProb)} fair</div></div>`).join('');
-  return `<div class="match"><div class="hdr"><div><div class="teams">${m.home} <span class="muted">v</span> ${m.away}</div><div class="stage">${m.stage}</div></div><span class="pill ${m.status==='live'?'live':''}">${m.status}</span></div><div class="outs">${outs}</div><div class="settle"><span class="muted" style="font-size:11.5px">win → points × odds, verified on-chain</span><button class="ghost" id="s-${m.id}">⚽ Simulate result</button></div><div id="r-${m.id}"></div></div>`;
+  const btn=m.settled
+    ? `<button class="ghost" id="s-${m.id}">🔒 View proof</button>`
+    : `<button class="ghost" id="s-${m.id}">⚽ Simulate result</button>`;
+  return `<div class="match"><div class="hdr"><div><div class="teams">${m.home} <span class="muted">v</span> ${m.away}</div><div class="stage">${m.stage}</div></div><span class="pill ${m.status==='live'?'live':''}">${m.status}</span></div><div class="outs">${outs}</div><div class="settle"><span class="muted" style="font-size:11.5px">win → points × odds, verified on-chain</span>${btn}</div><div id="r-${m.id}"></div></div>`;
 }
 function selectOutcome(m,o){
   SEL={matchId:m.id,outcome:o.key,label:o.label,odds:o.decimalOdds,match:`${m.home} v ${m.away}`};
@@ -171,18 +210,61 @@ $('predictBtn').onclick=async()=>{
   SEL=null;$('slip').classList.remove('show');document.querySelectorAll('.out').forEach(e=>e.classList.remove('sel'));
   refreshMe();refreshLeaderboard();
 };
+const TIER_LABEL={'verified-onchain':'✓ verified on-chain','root-anchored':'✓ root anchored on Solana','demonstration':'✓ Merkle-proof verified'};
 async function settle(matchId){
   const d=await api('/api/fan/settle','POST',{matchId});
   if(d.error){toast(d.error);return;}
+  const p=d.proof;PROOFS[matchId]={proof:p,meta:d};
   const el=document.getElementById(`r-${matchId}`);
-  el.innerHTML=`<div class="result">🏁 <b>${d.winningLabel}</b> won · settled ${d.settled} prediction(s), ${d.winners} winner(s)${d.totalRewardUsdMicro?` · ${usd(d.totalRewardUsdMicro)} rewards`:''}<div class="proof ${d.verified?'':'pend'}">${d.verified?'✓ on-chain verified':'⧗ sample result'} · daily-roots ${d.proofRef.split(' ')[0].slice(0,12)}…</div></div>`;
-  refreshMe();refreshLeaderboard();
+  const tierCls=p?p.tier:'demonstration';
+  el.innerHTML=`<div class="result">🏁 <b>${d.winningLabel}</b> won ${d.score?`<span class="muted">(${d.score})</span>`:''} · ${d.settled} settled, ${d.winners} winner(s)${d.totalRewardUsdMicro?` · <b style="color:var(--green)">${usd(d.totalRewardUsdMicro)}</b> rewards`:''}<div class="proof" style="margin-top:4px"><span class="tierbadge tier-${tierCls}" style="margin:0">${p?TIER_LABEL[p.tier]:'verified'}</span> <span class="verify-link" data-proof="${matchId}">see the proof ↗</span></div></div>`;
+  el.querySelector('.verify-link')?.addEventListener('click',()=>openProof(matchId));
+  // Auto-open the proof the first time, and celebrate a win.
+  openProof(matchId);
+  const me=await api('/api/fan/me?player='+encodeURIComponent(PLAYER||''));
+  if((me.predictions||[]).some(x=>x.matchId===matchId&&x.status==='won')){confetti();toast('You called it! 🎉');}
+  loadBoard();refreshMe();refreshLeaderboard();
+}
+
+function openProof(matchId){
+  const rec=PROOFS[matchId];if(!rec)return;
+  const {proof:p,meta:d}=rec;
+  const steps=(p.steps||[]).map((s,i)=>`<div class="step"><div class="dot">${i+1}</div><div class="body"><div class="lbl">combine with ${s.isRightSibling?'right':'left'} sibling <span class="muted">${s.siblingHex.slice(0,16)}…</span></div><div class="h">→ ${s.resultHex}</div></div></div>`).join('');
+  const rootMatch=p.rootHex&&p.steps&&p.steps.length?(p.steps[p.steps.length-1].resultHex===p.rootHex):p.verified;
+  const explorer=p.rootPdaExplorerUrl?`<a class="explorer" href="${p.rootPdaExplorerUrl}" target="_blank" rel="noopener">◎ View the day's root account on Solana Explorer →</a>`:'';
+  const txlink=p.txExplorerUrl?`<div style="margin-top:6px"><a class="explorer" href="${p.txExplorerUrl}" target="_blank" rel="noopener">◎ View the on-chain subscribe tx →</a></div>`:'';
+  $('proofSheet').innerHTML=`
+    <button class="close" onclick="document.getElementById('proofModal').classList.remove('show')">✕</button>
+    <h3>🔒 Provably fair</h3>
+    <span class="tierbadge tier-${p.tier}">${TIER_LABEL[p.tier]||p.tier}</span>
+    <div class="proofnote">${p.note||''}</div>
+    <div class="kv"><div class="k">Result (the leaf)</div><div class="hash">${p.leafPreimage||''}</div></div>
+    <div class="kv"><div class="k">Leaf hash — SHA-256(0x00 ‖ result)</div><div class="hash">${p.leafHex||'—'}</div></div>
+    <div class="kv"><div class="k">Inclusion proof — fold the leaf up to the root</div></div>
+    <div class="steps">${steps||'<div class="muted" style="font-size:12px">single-fixture day: the leaf is the root</div>'}</div>
+    <div class="rootrow ${rootMatch?'ok':''}"><div class="k" style="font-size:10px;color:var(--muted-2)">RECOMPUTED ROOT ${rootMatch?'✓ matches the anchored root':''}</div><div class="hash" style="margin-top:4px">${p.rootHex||'—'}</div></div>
+    <div class="kv" style="margin-top:12px"><div class="k">Anchored on Solana — daily_scores_merkle_roots</div><div class="hash">${p.rootPda||'—'}</div></div>
+    ${explorer}${txlink}
+    <div class="selfverify">Verify it yourself: SHA-256 the result string above (domain-separated with a 0x00 byte) to get the leaf, then hash it with each sibling in order. The result equals the root ${p.tier==='demonstration'?'this game published':'anchored on Solana'} — so the outcome cannot have been changed after the fact.</div>`;
+  $('proofModal').classList.add('show');
+}
+$('proofModal').addEventListener('click',(e)=>{if(e.target.id==='proofModal')$('proofModal').classList.remove('show');});
+
+// lightweight confetti — no deps
+function confetti(){
+  const cv=$('confetti'),ctx=cv.getContext('2d');cv.width=innerWidth;cv.height=innerHeight;
+  const cols=['#E9A84C','#4ADE80','#6ea8fe','#F0EDE8'];
+  const P=Array.from({length:120},()=>({x:innerWidth/2,y:innerHeight*0.3,vx:(Math.random()-0.5)*11,vy:Math.random()*-11-4,r:Math.random()*5+2,c:cols[Math.floor(Math.random()*cols.length)],a:1}));
+  let t=0;(function frame(){ctx.clearRect(0,0,cv.width,cv.height);t++;let alive=false;
+    for(const p of P){p.vy+=0.32;p.x+=p.vx;p.y+=p.vy;p.a=Math.max(0,1-t/90);if(p.a>0){alive=true;ctx.globalAlpha=p.a;ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,p.r,p.r*1.6);}}
+    if(alive)requestAnimationFrame(frame);else ctx.clearRect(0,0,cv.width,cv.height);})();
 }
 async function refreshMe(){
   if(!PLAYER){$('pts').textContent='—';return;}
   const d=await api('/api/fan/me?player='+encodeURIComponent(PLAYER));
   const p=d.player;$('pts').textContent=p.points;$('c-pts').textContent=p.points;
   $('c-streak').textContent=`${p.streak} 🔥`;$('c-rec').textContent=`${p.wins}–${p.losses}`;
+  const rk=$('c-rank');if(d.rank){rk.style.display='inline-block';rk.textContent=`rank #${d.rank}`;}else{rk.style.display='none';}
   const reward=(d.predictions||[]).reduce((s,x)=>s+(x.rewardUsdMicro||0),0);
   $('c-reward').textContent=usd(reward);
   $('mypreds').innerHTML=(d.predictions||[]).slice(0,12).map(x=>`<div class="mp"><span>${x.selectionLabel} <span class="muted">${x.stakePoints}p</span></span><span class="st-${x.status}">${x.status==='won'?'+'+x.payoutPoints+'p':x.status==='lost'?'lost':'open'}</span></div>`).join('')||'<div class="muted" style="font-size:12px">no predictions yet</div>';

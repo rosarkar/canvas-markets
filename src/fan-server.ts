@@ -3,6 +3,8 @@
  *   npm run fan   →   http://localhost:4400/fan/
  * Needs no Postgres/Telegram (in-memory prediction store).
  */
+import "@/utils/quiet-native-warnings.js";
+
 process.env.DATABASE_URL ??= "postgres://fan-demo:demo@localhost:5432/fan";
 process.env.TELEGRAM_BOT_TOKEN ??= "fan-demo";
 process.env.TELEGRAM_WEBHOOK_URL ??= "http://localhost:4400";
@@ -25,6 +27,14 @@ app.get("/health", (_req, res) => res.json({ ok: true, service: "canvas-cup" }))
 app.get("/", (_req, res) => res.redirect("/fan/"));
 
 const port = Number(process.env.FAN_PORT ?? "4400");
-app.listen(port, () => {
-  logger.info(`Canvas Cup fan experience → http://localhost:${port}/fan/`);
-});
+app
+  .listen(port, () => {
+    logger.info(`Canvas Cup fan experience → http://localhost:${port}/fan/`);
+  })
+  .on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      logger.error(`Port ${port} is already in use. Set FAN_PORT to a free port, e.g. FAN_PORT=4401 npm run fan`);
+      process.exit(1);
+    }
+    throw err;
+  });

@@ -77,7 +77,18 @@ src/services/risk/*              reused Kelly / Monte-Carlo / hedge engine
 
 ## Honesty
 
-On sample fixtures with simulated settlement, position outcomes are drawn from the fair
-probability to illustrate bankroll dynamics — clearly labelled, never presented as real returns.
-The risk math is exact and unit-tested. Solana execution is via Bankr (Polygon/Polymarket)
-per the sponsor's architecture. Not financial advice.
+- **On-chain goal proof is real, not asserted.** A goal produces a self-describing `ProofArtifact`
+  (`src/services/txline/verify.ts` + `merkle.ts`) that tiers itself: `verified-onchain` (the day's
+  score root is read from Solana *and* a Merkle proof recomputes to it), `root-anchored` (live
+  account read, recompute not finalized), or `demonstration` (a **real** Merkle inclusion proof
+  over sample data — the exact mechanism, clearly labelled, never called on-chain-verified). The
+  decision row links straight to the account on Solana Explorer.
+- **Settlement can't flatter the strategy.** Simulated positions settle against the *true* pre-goal
+  probability (`settleProb`), never the goal-inflated trade prob — so the goal strategy can't look
+  fictitiously profitable. Live orders are **never** PRNG-settled; they resolve from the real Bankr
+  job / Polymarket market. A failed live order opens no position and debits no bankroll.
+- The goal edge is a documented in-play model (a verified goal closes ~25% of the scoring side's gap
+  to certainty), not a hard-coded constant. Duplicate goal triggers on a held position are skipped.
+- The risk math **and** the agent's own strategy/executor logic are unit-tested. Solana execution is
+  via Bankr (cross-chain → Polymarket, USDC on Polygon) per the sponsor's architecture. Sample
+  fixtures are clearly labelled; nothing is presented as real returns. Not financial advice.

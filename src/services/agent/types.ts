@@ -1,4 +1,5 @@
 /** Types for Canvas Edge — the autonomous, risk-managed sports-trading agent. */
+import type { ProofArtifact } from "@/services/txline/verify.js";
 
 export type ExecutionMode = "simulated" | "live";
 export type StrategyKind = "value-edge" | "goal-trigger";
@@ -30,11 +31,15 @@ export interface AgentDecision {
   kellyStake: number;
   ruinProb: number;
   sharpe: number;
+  /** The TRUE (unbumped) fair probability used to settle the resulting position. */
+  settleProb: number;
   action: "bet" | "skip" | "blocked";
   reason: string;
   /** On-chain verification of the triggering event (goal-trigger strategy). */
   verified?: boolean;
   proofRef?: string;
+  /** Full self-describing on-chain proof of the triggering goal event. */
+  proof?: ProofArtifact;
 }
 
 export interface AgentPosition {
@@ -46,6 +51,8 @@ export interface AgentPosition {
   stake: number;
   decimalOdds: number;
   fairProb: number;
+  /** The probability the position is SETTLED against (unbumped — never the goal-inflated prob). */
+  settleProb: number;
   status: "open" | "won" | "lost";
   pnl: number;
   mode: ExecutionMode;

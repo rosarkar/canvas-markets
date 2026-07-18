@@ -41,6 +41,7 @@ export async function executeDecision(
     stake: d.kellyStake,
     decimalOdds: d.decimalOdds,
     fairProb: d.fairProb,
+    settleProb: d.settleProb,
     status: "open",
     pnl: 0,
     mode,
@@ -49,12 +50,16 @@ export async function executeDecision(
   };
 
   if (mode === "live") {
+    // Only commit the stake once Bankr accepts the order. A failed live order must
+    // NOT open a position or debit bankroll (that would silently drain the book).
     try {
       const r = await runPrompt(prompt, { maxWaitMs: 90_000 });
+      if (!r.jobId) throw new Error(`no jobId (status ${r.status})`);
       pos.jobId = r.jobId;
       logger.info({ jobId: r.jobId }, "Agent live order submitted to Bankr");
     } catch (err) {
-      logger.error({ err: (err as Error).message }, "Bankr live execution failed");
+      logger.error({ err: (err as Error).message }, "Bankr live execution failed — not opening position");
+      return null;
     }
   }
 

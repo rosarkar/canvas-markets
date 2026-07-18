@@ -7,11 +7,11 @@
  */
 import { resolveOddsFeed } from "@/services/odds-feed.js";
 import { logger } from "@/utils/logger.js";
-import { config } from "@/config/index.js";
 import { evaluateMatches, goalTriggerDecision } from "./strategy.js";
 import { executeDecision, currentMode } from "./executor.js";
-import { dailyScoresRootsPda, TXLINE_NETWORKS } from "@/services/txline/program.js";
-import { epochDayFromMs } from "@/services/txline/verify.js";
+import { TxLineFeed } from "@/services/txline/feed.js";
+import { demonstrateProof, epochDayFromMs, verifyScore, type FixtureResult } from "@/services/txline/verify.js";
+import type { MatchOdds } from "@/services/txodds.client.js";
 import { DEFAULT_RISK, type AgentDecision, type AgentState } from "./types.js";
 
 /** Max fresh bets executed per turn (pacing). */
@@ -37,13 +37,17 @@ function record(d: AgentDecision): void {
   if (agentState.decisions.length > 60) agentState.decisions.length = 60;
 }
 
-/** Simulated settlement — resolve each open position (this tick, ~50%) by a draw on fair prob. */
+/** Simulated settlement — resolve each open SIMULATED position (this tick, ~50%). */
 function settleOpenPositions(): void {
   for (const p of agentState.positions) {
     if (p.status !== "open") continue;
-    if (p.mode === "live" && !p.jobId) continue; // never fake-settle a failed live order
+    // Never draw P&L for a live order from a PRNG — those resolve from the real
+    // Bankr job / Polymarket market, not here. Only simulated positions settle.
+    if (p.mode === "live") continue;
     if (Math.random() > 0.5) continue; // let positions linger a couple of turns
-    const won = Math.random() < p.fairProb;
+    // Settle against the TRUE probability (settleProb), so goal-trigger positions —
+    // sized on an inflated in-play prob — are not fictitiously more profitable.
+    const won = Math.random() < p.settleProb;
     if (won) {
       agentState.bankroll += p.stake * p.decimalOdds;
       p.pnl = p.stake * (p.decimalOdds - 1);
@@ -57,36 +61,69 @@ function settleOpenPositions(): void {
   }
 }
 
+// Guards against a reset() or a second timer tick interleaving with a turn.
+let turnInFlight = false;
+
 export async function runAgentTurn(): Promise<{ evaluated: number; bet: number }> {
-  const feed = await resolveOddsFeed();
-  const matches = await feed.getMatches();
-  agentState.source = feed.source;
-  agentState.mode = currentMode();
+  if (turnInFlight) return { evaluated: 0, bet: 0 };
+  turnInFlight = true;
+  try {
+    const feed = await resolveOddsFeed();
+    const matches = await feed.getMatches();
+    agentState.source = feed.source;
+    agentState.mode = currentMode();
 
-  const decisions = evaluateMatches(matches, agentState);
-  agentState.blockedReason = decisions.find((d) => d.action === "blocked")?.reason ?? null;
+    const decisions = evaluateMatches(matches, agentState);
+    agentState.blockedReason = decisions.find((d) => d.action === "blocked")?.reason ?? null;
 
-  let bet = 0;
-  for (const d of decisions) {
-    record(d);
-    if (d.action === "bet" && bet < BETS_PER_TURN) {
-      const pos = await executeDecision(d, agentState);
-      if (pos) {
-        agentState.positions.unshift(pos);
-        if (agentState.positions.length > 40) agentState.positions.length = 40;
-        bet++;
+    let bet = 0;
+    for (const d of decisions) {
+      record(d);
+      if (d.action === "bet" && bet < BETS_PER_TURN) {
+        const pos = await executeDecision(d, agentState);
+        if (pos) {
+          agentState.positions.unshift(pos);
+          if (agentState.positions.length > 40) agentState.positions.length = 40;
+          bet++;
+        }
       }
     }
-  }
 
-  settleOpenPositions();
-  agentState.lastTickTs = Date.now();
-  return { evaluated: decisions.length, bet };
+    settleOpenPositions();
+    agentState.lastTickTs = Date.now();
+    return { evaluated: decisions.length, bet };
+  } finally {
+    turnInFlight = false;
+  }
+}
+
+/** Deterministic day-result set for the goal-event Merkle demonstration (sample path). */
+function dayResultsForAgent(
+  matches: MatchOdds[],
+  targetId: string,
+  targetOutcome: string,
+): FixtureResult[] {
+  return matches.map((m) => {
+    const outs = (m.markets.find((k) => k.key === "1X2") ?? m.markets[0])?.outcomes ?? [];
+    const winner =
+      m.id === targetId
+        ? targetOutcome
+        : outs.reduce((b, o) => (o.fairProb > (b?.fairProb ?? -1) ? o : b), outs[0])?.key ?? "HOME";
+    return {
+      fixtureId: m.id,
+      matchLabel: `${m.home} vs ${m.away}`,
+      winner,
+      homeGoals: winner === "HOME" ? 1 : 0,
+      awayGoals: winner === "AWAY" ? 1 : 0,
+    };
+  });
 }
 
 /**
  * Inject a goal event (from the live TxLINE scores stream or a demo trigger).
- * Attempts on-chain proof verification when the live feed is active.
+ * Produces a REAL proof artifact: on the live feed it verifies the score record
+ * against TxLINE's on-chain root; on sample data it demonstrates the same Merkle
+ * inclusion proof (clearly labelled) — never a hardcoded "verified:true".
  */
 export async function injectGoal(
   matchId: string,
@@ -96,14 +133,21 @@ export async function injectGoal(
   const match = await feed.getMatch(matchId);
   if (!match) return null;
 
-  const cfg = TXLINE_NETWORKS[config.solana.network];
-  const pda = dailyScoresRootsPda(cfg.programId, epochDayFromMs(Date.now())).toBase58();
-  const verify =
-    feed.source === "txodds-live"
-      ? { verified: true, proofRef: pda }
-      : { verified: false, proofRef: `${pda} (demo goal — live TxLINE stream verifies on-chain)` };
+  const epochDay = epochDayFromMs(Date.now());
+  let proof;
+  if (feed.source === "txodds-live" && feed instanceof TxLineFeed && feed.txClient) {
+    const fixtureId = feed.fixtureIdFor(matchId);
+    proof = await verifyScore(feed.txClient, fixtureId ?? 0, 1, Date.now());
+  } else {
+    const matches = await feed.getMatches();
+    proof = demonstrateProof({
+      dayResults: dayResultsForAgent(matches, matchId, outcome),
+      fixtureId: matchId,
+      epochDay,
+    });
+  }
 
-  const d = goalTriggerDecision(match, outcome, agentState, verify);
+  const d = goalTriggerDecision(match, outcome, agentState, proof);
   if (!d) return null;
   record(d);
   if (d.action === "bet") {

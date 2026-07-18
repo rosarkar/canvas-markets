@@ -132,7 +132,7 @@ const $=(id)=>document.getElementById(id);
 const usd=(x)=>`${x<0?'-':''}$${Math.abs(Number(x)).toLocaleString(undefined,{maximumFractionDigits:2})}`;
 const pct=(x)=>`${(x*100).toFixed(1)}%`;
 const COL={accent:'#E9A84C',green:'#4ADE80',red:'#ef4444',muted:'#66637A'};
-let equityHist=[];
+let equityHist=[];let lastTickSeen=null;
 
 async function api(path,method='GET',body){const r=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});return r.json();}
 
@@ -166,8 +166,16 @@ function decisionRow(d){
   const t=new Date(d.ts).toISOString().slice(11,19);
   const strat=d.strategy==='goal-trigger'?'<span class="tag goal">goal</span>':'<span class="tag val">value</span>';
   const act=d.action==='bet'?'<span class="act-bet">BET</span>':d.action==='blocked'?'<span class="act-blocked">BLOCKED</span>':'<span class="act-skip">skip</span>';
-  const proof=d.strategy==='goal-trigger'?`<div class="proof ${d.verified?'':'pend'}">${d.verified?'✓ on-chain verified':'⧗ proof pending'}</div>`:'';
+  const proof=proofBadge(d);
   return `<tr><td class="muted">${t}</td><td>${strat}</td><td>${d.matchLabel}</td><td>${d.selectionLabel}</td><td class="${d.edge>0?'pos':'muted'}">${d.edge>0?'+':''}${pct(d.edge)}</td><td>${act}</td><td class="muted">${d.reason}${proof}</td></tr>`;
+}
+const TIER_TXT={'verified-onchain':'✓ verified on-chain','root-anchored':'✓ root anchored on Solana','demonstration':'✓ Merkle proof demonstrated'};
+function proofBadge(d){
+  if(d.strategy!=='goal-trigger'||!d.proof)return '';
+  const p=d.proof;
+  const link=p.rootPdaExplorerUrl?` · <a href="${p.rootPdaExplorerUrl}" target="_blank" rel="noopener" style="color:var(--accent)">day-root on Solana ↗</a>`:'';
+  const tx=p.txExplorerUrl?` · <a href="${p.txExplorerUrl}" target="_blank" rel="noopener" style="color:var(--accent)">tx ↗</a>`:'';
+  return `<div class="proof ${p.verified?'':'pend'}">${TIER_TXT[p.tier]||p.tier}${link}${tx}</div>`;
 }
 function positionRow(p){
   const st=`<span class="st-${p.status}">${p.status}</span>`;
@@ -207,7 +215,10 @@ async function refresh(){
   $('positions').querySelector('tbody').innerHTML=s.positions.slice(0,40).map(positionRow).join('')||'<tr><td colspan="7" class="muted">no positions yet</td></tr>';
   const eq=s.startingBankroll+s.realizedPnl;
   const lastEq=equityHist[equityHist.length-1];
-  if(!lastEq||lastEq.v!==eq||s.lastTickTs){equityHist.push({t:Date.now(),v:eq});if(equityHist.length>120)equityHist.shift();}
+  // Record a point only when equity actually moved OR a genuinely new tick landed —
+  // not on every 2.5s poll (which flat-padded and time-distorted the curve).
+  const newTick=s.lastTickTs&&s.lastTickTs!==lastTickSeen;
+  if(!lastEq||lastEq.v!==eq||newTick){equityHist.push({t:s.lastTickTs||Date.now(),v:eq});if(equityHist.length>120)equityHist.shift();lastTickSeen=s.lastTickTs;}
   $('equity').innerHTML=equityChart();
 }
 

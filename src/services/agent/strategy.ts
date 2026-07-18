@@ -5,7 +5,16 @@
  */
 import { assessSelection } from "@/services/risk/index.js";
 import type { MatchOdds } from "@/services/txodds.client.js";
+import type { ProofArtifact } from "@/services/txline/verify.js";
 import type { AgentDecision, AgentState } from "./types.js";
+
+/**
+ * A verified goal for the scoring side closes a fixed fraction of the remaining
+ * gap to certainty: p' = p + SHIFT·(1 − p). This is a documented in-play model —
+ * the shift scales with room-to-move (a 0.40 side jumps more in absolute terms
+ * than a 0.90 favourite), rather than a flat constant bump.
+ */
+const GOAL_PROB_SHIFT = 0.25;
 
 let counter = 0;
 const nextId = (p: string): string => `${p}-${Date.now().toString(36)}-${(counter++).toString(36)}`;
@@ -58,6 +67,7 @@ export function evaluateMatches(matches: MatchOdds[], state: AgentState): AgentD
           kellyStake: stake,
           ruinProb: a.simulation.ruinProbability,
           sharpe: a.metrics.sharpe,
+          settleProb: o.fairProb,
           action: blocked ? "blocked" : a.stake.bet && stake > 0 ? "bet" : "skip",
           reason: blocked
             ? blocked
@@ -79,14 +89,18 @@ export function goalTriggerDecision(
   match: MatchOdds,
   scoringOutcome: string,
   state: AgentState,
-  verify?: { verified: boolean; proofRef: string },
+  proof?: ProofArtifact,
 ): AgentDecision | null {
   const mk = match.markets.find((m) => m.key === "1X2") ?? match.markets[0];
   const o = mk?.outcomes.find((x) => x.key === scoringOutcome);
   if (!o) return null;
   const blocked = riskBlock(state);
+  const held = new Set(
+    state.positions.filter((p) => p.status === "open").map((p) => `${p.matchId}:${p.outcome}`),
+  );
+  const isHeld = held.has(`${match.id}:${o.key}`);
   // A verified goal shifts true probability up; trade the transient dislocation.
-  const bumped = Math.min(0.95, o.fairProb + 0.08);
+  const bumped = Math.min(0.97, o.fairProb + GOAL_PROB_SHIFT * (1 - o.fairProb));
   const a = assessSelection({
     outcome: o.key,
     fairProb: bumped,
@@ -97,6 +111,16 @@ export function goalTriggerDecision(
     paths: 3000,
   });
   const stake = Math.min(a.stake.stake, state.risk.maxStakeUsd);
+  // Key the wording off the tier, not the raw verified flag: a demonstration proof
+  // genuinely recomputes (verified=true) but runs on SAMPLE data — it must not read
+  // as "on-chain verified".
+  const verifiedNote = !proof
+    ? "goal"
+    : proof.tier === "verified-onchain"
+      ? "goal verified on-chain"
+      : proof.tier === "root-anchored"
+        ? "goal root anchored on Solana"
+        : "goal proof demonstrated (sample)";
   return {
     id: nextId("goal"),
     ts: Date.now(),
@@ -111,9 +135,17 @@ export function goalTriggerDecision(
     kellyStake: stake,
     ruinProb: a.simulation.ruinProbability,
     sharpe: a.metrics.sharpe,
-    action: blocked ? "blocked" : stake > 0 ? "bet" : "skip",
-    reason: blocked ?? `goal verified on-chain → trade before repricing ($${stake.toFixed(2)})`,
-    verified: verify?.verified,
-    proofRef: verify?.proofRef,
+    // Settle on the TRUE pre-goal probability — never the inflated trade prob, so
+    // the goal strategy can't look systematically (and fictitiously) profitable.
+    settleProb: o.fairProb,
+    action: blocked ? "blocked" : isHeld ? "skip" : stake > 0 ? "bet" : "skip",
+    reason: blocked
+      ? blocked
+      : isHeld
+        ? "already holding this position — skipping duplicate goal trigger"
+        : `${verifiedNote} → trade the dislocation before repricing ($${stake.toFixed(2)})`,
+    verified: proof?.verified,
+    proofRef: proof?.rootPda,
+    proof,
   };
 }

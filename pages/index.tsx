@@ -3,7 +3,41 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Nav from '../components/Nav'
 import { enrichMatches, SAMPLE_MATCHES, kelly, type Match, type Outcome } from '../lib/risk'
 
-const MATCHES = enrichMatches(SAMPLE_MATCHES)
+const SAMPLE = enrichMatches(SAMPLE_MATCHES)
+
+// --- Live TxLINE feed (GET /api/markets → Railway → on-chain Solana data) ---
+interface ApiOutcome { key: string; label: string; fairProb: number; decimalOdds: number; edge: number }
+interface ApiMarket { key: string; label: string; outcomes: ApiOutcome[] }
+interface ApiMatch { id: string; competition?: string; stage?: string; home: string; away: string; status?: Match['status']; markets: ApiMarket[] }
+interface Provenance { onChain?: boolean; rootExplorerUrl?: string; network?: string }
+
+/** Map the live on-chain MatchOdds payload into the board's Match shape. Keeps
+ *  only matches that actually have a priced 1X2 market (skip fixtures with no book). */
+function liveMatchesFrom(apiMatches: ApiMatch[]): Match[] {
+  return apiMatches
+    .map((m): Match | null => {
+      const mk = (m.markets || []).find(k => (k.outcomes || []).length >= 2)
+      if (!mk) return null
+      const outcomes: Outcome[] = mk.outcomes.map(o => ({
+        key: o.key,
+        label: o.label,
+        txodds: o.decimalOdds,
+        market: o.decimalOdds,
+        fairProb: o.fairProb,
+        edge: o.edge,
+      }))
+      return {
+        id: m.id,
+        stage: m.stage || m.competition || 'World Cup',
+        home: m.home,
+        away: m.away,
+        status: m.status ?? 'scheduled',
+        outcomes,
+        ou: [], // live StablePrice feed publishes the 1X2 result market only
+      }
+    })
+    .filter((m): m is Match => m !== null)
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -42,6 +76,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<{ match: Match; outcome: Outcome } | null>(null)
   const [bankroll, setBankroll] = useState(1000)
+  const [matches, setMatches] = useState<Match[]>(SAMPLE)
+  const [feed, setFeed] = useState<{ live: boolean; provenance?: Provenance }>({ live: false })
   const chatRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -56,6 +92,24 @@ export default function Home() {
     addAgentMessage('Pick an outcome on the board or ask me anything — best edges right now, how much to stake, how to hedge a position.')
   }, [addAgentMessage])
 
+  // Pull the live on-chain TxLINE board; keep labelled sample fixtures if it's
+  // unavailable or has no priced matches yet (never mislabel sample as live).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/markets')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: { source?: string; provenance?: Provenance; matches?: ApiMatch[] }) => {
+        if (cancelled) return
+        const live = liveMatchesFrom(data.matches ?? [])
+        if (data.source === 'txodds-live' && live.length) {
+          setMatches(live)
+          setFeed({ live: true, provenance: data.provenance })
+        }
+      })
+      .catch(() => { /* keep sample */ })
+    return () => { cancelled = true }
+  }, [])
+
   async function send(userText?: string) {
     const text = userText ?? input.trim()
     if (!text || loading) return
@@ -68,7 +122,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system: buildSystemPrompt(MATCHES, selected),
+          system: buildSystemPrompt(matches, selected),
           messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
         }),
       })
@@ -112,10 +166,24 @@ export default function Home() {
           <span style={{ fontSize: 13, color: 'var(--muted)', maxWidth: 400 }}>
             Risk-managed World Cup copilot — TxLINE StablePrice → Kelly sizing → Bankr settlement
           </span>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            {['Sample fixtures', 'Simulated settlement'].map(b => (
-              <span key={b} style={{ fontSize: 11, padding: '3px 8px', border: '0.5px solid var(--border)', borderRadius: 6, color: 'var(--muted)', background: 'var(--surface)' }}>{b}</span>
-            ))}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{
+              fontSize: 11, padding: '3px 8px', borderRadius: 6,
+              border: `0.5px solid ${feed.live ? 'rgba(74,222,128,.35)' : 'var(--border)'}`,
+              color: feed.live ? 'var(--green)' : 'var(--muted)',
+              background: feed.live ? 'rgba(74,222,128,.08)' : 'var(--surface)',
+            }}>
+              {feed.live ? '● Live · TxLINE StablePrice' : 'Sample fixtures'}
+            </span>
+            {feed.live && feed.provenance?.rootExplorerUrl && (
+              <a href={feed.provenance.rootExplorerUrl} target="_blank" rel="noreferrer" style={{
+                fontSize: 11, padding: '3px 8px', borderRadius: 6, textDecoration: 'none',
+                border: '0.5px solid rgba(233,168,76,.3)', color: 'var(--accent)', background: 'var(--accent-bg)',
+              }}>
+                on-chain ✓
+              </a>
+            )}
+            <span style={{ fontSize: 11, padding: '3px 8px', border: '0.5px solid var(--border)', borderRadius: 6, color: 'var(--muted)', background: 'var(--surface)' }}>Simulated settlement</span>
           </div>
         </header>
 
@@ -124,7 +192,7 @@ export default function Home() {
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
               World Cup board — tap an outcome to analyse
             </div>
-            {MATCHES.map(m => (
+            {matches.map(m => (
               <div key={m.id} style={{
                 background: 'var(--surface)',
                 border: `0.5px solid ${selected?.match.id === m.id ? 'rgba(233,168,76,.5)' : 'var(--border)'}`,
@@ -161,27 +229,31 @@ export default function Home() {
                     )
                   })}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--muted-2)', padding: '2px 12px', textTransform: 'uppercase', letterSpacing: '.05em' }}>O/U 2.5</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '4px 8px 8px' }}>
-                  {m.ou.map(o => {
-                    const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
-                    const isPos = (o.edge ?? 0) > 0
-                    return (
-                      <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
-                        border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
-                        borderRadius: 6, padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
-                        background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
-                        transition: 'all .15s',
-                      }}>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
-                        <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
-                          {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+                {m.ou.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, color: 'var(--muted-2)', padding: '2px 12px', textTransform: 'uppercase', letterSpacing: '.05em' }}>O/U 2.5</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '4px 8px 8px' }}>
+                      {m.ou.map(o => {
+                        const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
+                        const isPos = (o.edge ?? 0) > 0
+                        return (
+                          <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
+                            border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
+                            borderRadius: 6, padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
+                            background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
+                            transition: 'all .15s',
+                          }}>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
+                            <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
+                            <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
+                              {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

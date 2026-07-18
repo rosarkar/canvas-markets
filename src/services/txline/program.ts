@@ -89,3 +89,41 @@ export function dailyScoresRootsPda(programId: PublicKey, epochDay: number): Pub
     programId,
   )[0];
 }
+
+/**
+ * Candidate PDAs the day's scores root may live under. The Anchor 0.30 IDL does
+ * not encode seed bytes, and the program refers to the account both as
+ * `daily_scores_roots` (insert) and `daily_scores_merkle_roots` (validate_stat),
+ * so we probe a small set of seed encodings and use whichever is actually
+ * anchored on-chain. Kept explicit + honest rather than asserting one blindly.
+ */
+export function dailyScoresRootPdaCandidates(
+  programId: PublicKey,
+  epochDay: number,
+): { label: string; pda: PublicKey }[] {
+  const u16 = Buffer.alloc(2);
+  u16.writeUInt16LE(epochDay, 0);
+  const u32 = Buffer.alloc(4);
+  u32.writeUInt32LE(epochDay, 0);
+  const i64 = Buffer.alloc(8);
+  i64.writeBigInt64LE(BigInt(epochDay), 0);
+  const derive = (seeds: Buffer[]) => PublicKey.findProgramAddressSync(seeds, programId)[0];
+  return [
+    { label: "daily_scores_roots+u16", pda: derive([Buffer.from("daily_scores_roots"), u16]) },
+    { label: "daily_scores_merkle_roots+u16", pda: derive([Buffer.from("daily_scores_merkle_roots"), u16]) },
+    { label: "daily_scores_merkle_roots+u32", pda: derive([Buffer.from("daily_scores_merkle_roots"), u32]) },
+    { label: "daily_scores_merkle_roots+i64", pda: derive([Buffer.from("daily_scores_merkle_roots"), i64]) },
+  ];
+}
+
+/** Solana Explorer URL for a transaction signature (cluster-aware). */
+export function explorerTx(signature: string, network: SolanaNetwork): string {
+  const suffix = network === "devnet" ? "?cluster=devnet" : "";
+  return `https://explorer.solana.com/tx/${signature}${suffix}`;
+}
+
+/** Solana Explorer URL for an account/address (cluster-aware). */
+export function explorerAddress(address: string, network: SolanaNetwork): string {
+  const suffix = network === "devnet" ? "?cluster=devnet" : "";
+  return `https://explorer.solana.com/address/${address}${suffix}`;
+}

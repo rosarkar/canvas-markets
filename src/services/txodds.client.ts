@@ -118,6 +118,8 @@ export class LiveFeed implements OddsFeed {
     private readonly baseUrl: string,
   ) {}
 
+  private readonly fallback = new FixtureFeed();
+
   private async get<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
@@ -127,30 +129,38 @@ export class LiveFeed implements OddsFeed {
     return (await res.json()) as T;
   }
 
+  // NOTE: the supported live source is the on-chain TxLINE feed (USE_TXLINE=true),
+  // which delivers cryptographically-verifiable data on Solana. This REST LiveFeed
+  // is a placeholder for a future direct-HTTP TxODDS mapping; until that schema is
+  // wired it falls back to labelled sample fixtures so no route can 500. The
+  // fallback keeps `source: "fixture"` so nothing is mislabelled as live.
   async getMatches(): Promise<MatchOdds[]> {
-    // TODO(hackathon-creds): map the real TxODDS soccer feed here. Expected to
-    // fetch World Cup fixtures + 1X2/OU odds and reuse `fixtureToMatchOdds`'s
-    // de-vig logic. Kept explicit so the swap is a single, reviewable change.
-    throw new Error("LiveFeed not wired — supply the TxODDS hackathon schema, then map it here.");
+    return this.fallback.getMatches();
   }
 
   async getMatch(id: string): Promise<MatchOdds | undefined> {
-    void id;
-    throw new Error("LiveFeed not wired — supply the TxODDS hackathon schema, then map it here.");
+    return this.fallback.getMatch(id);
   }
 }
 
 let cached: OddsFeed | null = null;
 
-/** Returns the live feed when a TxODDS key is present, else the fixture feed. */
+/**
+ * The non-Solana odds source. The supported LIVE source is the on-chain TxLINE
+ * feed (USE_TXLINE=true), resolved in `odds-feed.ts`; this factory returns the
+ * labelled sample fixtures used when TxLINE is off. A REST TxODDS key does NOT
+ * auto-select the (unwired) LiveFeed — that would 500 every route — it only logs
+ * that the on-chain path is the way to go live, keeping the demo bulletproof.
+ */
 export function getOddsFeed(): OddsFeed {
   if (cached) return cached;
   if (config.markets.txoddsApiKey) {
-    logger.info("TxODDS key present — using live feed");
-    cached = new LiveFeed(config.markets.txoddsApiKey, config.markets.txoddsBaseUrl);
+    logger.info(
+      "TxODDS REST key present, but the supported live source is on-chain TxLINE (set USE_TXLINE=true). Using sample fixtures.",
+    );
   } else {
     logger.info("No TxODDS key — using sample World Cup fixtures");
-    cached = new FixtureFeed();
   }
+  cached = new FixtureFeed();
   return cached;
 }

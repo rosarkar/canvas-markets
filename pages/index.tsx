@@ -1,5 +1,6 @@
 import Head from 'next/head'
 import { useState, useRef, useEffect, useCallback } from 'react'
+import Nav from '../components/Nav'
 import { enrichMatches, SAMPLE_MATCHES, kelly, type Match, type Outcome } from '../lib/risk'
 
 const MATCHES = enrichMatches(SAMPLE_MATCHES)
@@ -106,10 +107,8 @@ export default function Home() {
       </Head>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem' }}>
+        <Nav />
         <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '0.5px solid var(--border)', paddingBottom: '1rem' }}>
-          <div style={{ fontFamily: 'var(--serif)', fontSize: 28, fontWeight: 600 }}>
-            Canvas <em style={{ fontStyle: 'italic', color: 'var(--accent)' }}>Markets</em>
-          </div>
           <span style={{ fontSize: 13, color: 'var(--muted)', maxWidth: 400 }}>
             Risk-managed World Cup copilot — TxLINE StablePrice → Kelly sizing → Bankr settlement
           </span>

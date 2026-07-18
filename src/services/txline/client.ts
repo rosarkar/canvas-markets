@@ -161,8 +161,16 @@ export class TxLineClient {
       body: JSON.stringify({ txSig, walletSignature, leagues }),
     });
     if (!actRes.ok) throw new Error(`token/activate ${actRes.status}: ${await actRes.text()}`);
-    const body = (await actRes.json()) as { token?: string } | string;
-    const apiToken = typeof body === "string" ? body : (body.token ?? "");
+    // TxLINE returns the API token as `text/plain` (not JSON). Read as text, but
+    // still tolerate a JSON `{token}` or bare-string body in case the API changes.
+    const raw = (await actRes.text()).trim();
+    let apiToken = raw.replace(/^"|"$/g, "");
+    try {
+      const parsed = JSON.parse(raw) as { token?: string } | string;
+      apiToken = typeof parsed === "string" ? parsed : (parsed.token ?? apiToken);
+    } catch {
+      /* plain-text token — use `raw` as-is */
+    }
     if (!apiToken) throw new Error("activation returned no token");
 
     this.jwt = jwt;

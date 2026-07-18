@@ -40,6 +40,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.json({ text })
   } catch (err) {
     console.error('chat proxy error', err)
-    return res.status(500).json({ error: 'Internal error' })
+    return res.status(500).json({ error: (err as Error).message ?? 'Internal error' })
   }
 }

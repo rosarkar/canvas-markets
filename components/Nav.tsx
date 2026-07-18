@@ -6,6 +6,7 @@ const LINKS = [
   { href: '/', label: 'Risk Desk' },
   { href: '/agent', label: 'Edge Agent' },
   { href: '/fan', label: 'Canvas Cup' },
+  { href: '/judges', label: 'Judges' },
 ]
 
 export default function Nav() {

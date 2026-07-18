@@ -95,7 +95,7 @@ export default function AgentPage() {
       setState(await api('state'))
       setError(null)
     } catch {
-      setError('Backend unreachable — check CANVAS_RAILWAY_URL')
+      setError('Backend unreachable — check CANVAS_AGENT_URL')
     }
   }, [])
 

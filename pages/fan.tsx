@@ -82,7 +82,7 @@ export default function FanPage() {
       }
       setError(null)
     } catch {
-      setError('Backend unreachable — check CANVAS_RAILWAY_URL')
+      setError('Backend unreachable — check CANVAS_FAN_URL')
     }
   }, [joined])
 

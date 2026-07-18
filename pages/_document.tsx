@@ -6,7 +6,7 @@ const themeInit = `(function(){try{if(localStorage.getItem('canvas-theme')==='li
 
 export default function Document() {
   return (
-    <Html lang="en">
+    <Html lang="en" suppressHydrationWarning>
       <Head />
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />

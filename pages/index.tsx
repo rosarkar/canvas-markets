@@ -22,10 +22,10 @@ function liveMatchesFrom(apiMatches: ApiMatch[]): Match[] {
       ? mk.outcomes.map(o => ({
           key: o.key,
           label: o.label,
-          txodds: o.decimalOdds,
-          market: o.decimalOdds,
-          fairProb: o.fairProb,
-          edge: o.edge,
+          txodds: Number(o.decimalOdds) || 0,
+          market: Number(o.decimalOdds) || 0,
+          fairProb: Number(o.fairProb) || 0,
+          edge: Number(o.edge) || 0,
         }))
       : []
     return {

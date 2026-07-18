@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import Nav from '../components/Nav'
 
@@ -152,6 +153,17 @@ export default function FanPage() {
       <Head><title>Canvas Cup — Prediction Game</title></Head>
       <div style={{ padding: '1.5rem clamp(1rem, 3vw, 3rem)' }}>
         <Nav />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Points prediction game — provably-fair, Merkle-anchored settlement</span>
+          <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
+            marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, textDecoration: 'none',
+            color: 'var(--accent)', background: 'var(--accent-bg)', border: '0.5px solid rgba(233,168,76,.4)',
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+          }}>
+            <i className="ti ti-shield-check" aria-hidden="true" style={{ fontSize: 13 }} /> Verify on-chain
+          </Link>
+        </div>
 
         {error && <div style={{ ...card, borderColor: 'rgba(239,68,68,.4)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
 

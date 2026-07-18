@@ -70,6 +70,8 @@ export class TxLineClient {
   private handle: TxLineProgramHandle;
   private jwt: string | null = null;
   private apiToken: string | null = null;
+  /** The most recent on-chain `subscribe` tx signature (for explorer receipts). */
+  public lastSubscribeSig: string | null = null;
 
   constructor(
     public readonly cfg: TxLineNetworkConfig,
@@ -138,6 +140,7 @@ export class TxLineClient {
       .preInstructions([createUserAtaIx])
       .rpc();
 
+    this.lastSubscribeSig = txSig;
     logger.info({ txSig, network: this.cfg.network }, "TxLINE subscribe confirmed");
     return txSig;
   }

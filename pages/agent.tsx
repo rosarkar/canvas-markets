@@ -140,7 +140,7 @@ export default function AgentPage() {
   return (
     <>
       <Head><title>Canvas Edge — Autonomous Agent</title></Head>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem' }}>
+      <div style={{ padding: '1.5rem clamp(1rem, 3vw, 3rem)' }}>
         <Nav />
 
         {error && (

@@ -11,32 +11,32 @@ interface ApiMarket { key: string; label: string; outcomes: ApiOutcome[] }
 interface ApiMatch { id: string; competition?: string; stage?: string; home: string; away: string; status?: Match['status']; markets: ApiMarket[] }
 interface Provenance { onChain?: boolean; rootExplorerUrl?: string; network?: string }
 
-/** Map the live on-chain MatchOdds payload into the board's Match shape. Keeps
- *  only matches that actually have a priced 1X2 market (skip fixtures with no book). */
+/** Map the live on-chain MatchOdds payload into the board's Match shape. Priced
+ *  fixtures get their 1X2 outcomes; unpriced fixtures are kept with no outcomes
+ *  (rendered as "awaiting line") so the board shows the full on-chain slate. */
 function liveMatchesFrom(apiMatches: ApiMatch[]): Match[] {
-  return apiMatches
-    .map((m): Match | null => {
-      const mk = (m.markets || []).find(k => (k.outcomes || []).length >= 2)
-      if (!mk) return null
-      const outcomes: Outcome[] = mk.outcomes.map(o => ({
-        key: o.key,
-        label: o.label,
-        txodds: o.decimalOdds,
-        market: o.decimalOdds,
-        fairProb: o.fairProb,
-        edge: o.edge,
-      }))
-      return {
-        id: m.id,
-        stage: m.stage || m.competition || 'World Cup',
-        home: m.home,
-        away: m.away,
-        status: m.status ?? 'scheduled',
-        outcomes,
-        ou: [], // live StablePrice feed publishes the 1X2 result market only
-      }
-    })
-    .filter((m): m is Match => m !== null)
+  return apiMatches.map((m): Match => {
+    const mk = (m.markets || []).find(k => (k.outcomes || []).length >= 2)
+    const outcomes: Outcome[] = mk
+      ? mk.outcomes.map(o => ({
+          key: o.key,
+          label: o.label,
+          txodds: o.decimalOdds,
+          market: o.decimalOdds,
+          fairProb: o.fairProb,
+          edge: o.edge,
+        }))
+      : []
+    return {
+      id: m.id,
+      stage: m.stage || m.competition || 'World Cup',
+      home: m.home,
+      away: m.away,
+      status: m.status ?? 'scheduled',
+      outcomes,
+      ou: [],
+    }
+  })
 }
 
 interface Message {
@@ -53,7 +53,7 @@ function buildSystemPrompt(matches: Match[], sel: { match: Match; outcome: Outco
     '',
     'Live match data:',
   ]
-  matches.forEach(m => {
+  matches.filter(m => m.outcomes.length).forEach(m => {
     lines.push(`${m.home} vs ${m.away} (${m.stage}${m.status === 'live' ? ' — LIVE' : ''})`)
     ;[...m.outcomes, ...m.ou].forEach(o => {
       const e = ((o.edge ?? 0) * 100).toFixed(1)
@@ -101,7 +101,8 @@ export default function Home() {
       .then((data: { source?: string; provenance?: Provenance; matches?: ApiMatch[] }) => {
         if (cancelled) return
         const live = liveMatchesFrom(data.matches ?? [])
-        if (data.source === 'txodds-live' && live.length) {
+        const priced = live.filter(m => m.outcomes.length)
+        if (data.source === 'txodds-live' && priced.length) {
           setMatches(live)
           setFeed({ live: true, provenance: data.provenance })
         }
@@ -141,7 +142,7 @@ export default function Home() {
     const stake = kelly(outcome.fairProb ?? 0, outcome.market) * 0.5 * bankroll
     const msg = e > 0
       ? `Selected ${outcome.label} — ${match.home} vs ${match.away}. Edge: +${e.toFixed(1)}%, fair prob ${fp.toFixed(1)}%, half-Kelly stake $${stake.toFixed(0)} on a $${bankroll} bankroll. Want the full risk breakdown or hedge?`
-      : `${outcome.label} — ${match.home} vs ${match.away} has negative EV (${e.toFixed(1)}% edge). The book has the edge here. Want me to find a better line?`
+      : `${outcome.label} — ${match.home} vs ${match.away}: edge ${e.toFixed(1)}%, fair prob ${fp.toFixed(1)}%. This is the de-margined fair line, so there's little to no edge. Want me to size it or hedge anyway?`
     addAgentMessage(msg)
   }
 
@@ -160,10 +161,10 @@ export default function Home() {
         <meta name="description" content="Risk-managed World Cup betting copilot. TxLINE StablePrice odds, Kelly sizing, Monte Carlo ruin analysis, Bankr settlement." />
       </Head>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem' }}>
+      <div style={{ padding: '1.5rem clamp(1rem, 3vw, 3rem)' }}>
         <Nav />
-        <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '0.5px solid var(--border)', paddingBottom: '1rem' }}>
-          <span style={{ fontSize: 13, color: 'var(--muted)', maxWidth: 400 }}>
+        <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '0.5px solid var(--border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>
             Risk-managed World Cup copilot — TxLINE StablePrice → Kelly sizing → Bankr settlement
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -187,63 +188,41 @@ export default function Home() {
           </div>
         </header>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.5rem', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '1.5rem', alignItems: 'start' }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
               World Cup board — tap an outcome to analyse
             </div>
-            {matches.map(m => (
-              <div key={m.id} style={{
-                background: 'var(--surface)',
-                border: `0.5px solid ${selected?.match.id === m.id ? 'rgba(233,168,76,.5)' : 'var(--border)'}`,
-                borderRadius: 10,
-                marginBottom: 8,
-                overflow: 'hidden',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '0.5px solid var(--border)' }}>
-                  <div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{m.home} vs {m.away}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.stage}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
+              {matches.map(m => (
+                <div key={m.id} style={{
+                  background: 'var(--surface)',
+                  border: `0.5px solid ${selected?.match.id === m.id ? 'rgba(233,168,76,.5)' : 'var(--border)'}`,
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '0.5px solid var(--border)' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{m.home} vs {m.away}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.stage}</div>
+                    </div>
+                    {m.status === 'live' && (
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'rgba(74,222,128,.1)', color: 'var(--green)', border: '0.5px solid rgba(74,222,128,.3)' }}>● live</span>
+                    )}
                   </div>
-                  {m.status === 'live' && (
-                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'rgba(74,222,128,.1)', color: 'var(--green)', border: '0.5px solid rgba(74,222,128,.3)' }}>● live</span>
-                  )}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: '8px 8px 4px' }}>
-                  {m.outcomes.map(o => {
-                    const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
-                    const isPos = (o.edge ?? 0) > 0
-                    return (
-                      <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
-                        border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
-                        borderRadius: 6, padding: '7px 4px', textAlign: 'center', cursor: 'pointer',
-                        background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
-                        transition: 'all .15s',
-                      }}>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
-                        <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
-                          {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-                {m.ou.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 10, color: 'var(--muted-2)', padding: '2px 12px', textTransform: 'uppercase', letterSpacing: '.05em' }}>O/U 2.5</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '4px 8px 8px' }}>
-                      {m.ou.map(o => {
+                  {m.outcomes.length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: '8px 8px' }}>
+                      {m.outcomes.map(o => {
                         const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
                         const isPos = (o.edge ?? 0) > 0
                         return (
                           <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
                             border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
-                            borderRadius: 6, padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
+                            borderRadius: 6, padding: '7px 4px', textAlign: 'center', cursor: 'pointer',
                             background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
                             transition: 'all .15s',
                           }}>
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</div>
                             <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
                             <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
                               {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
@@ -252,10 +231,40 @@ export default function Home() {
                         )
                       })}
                     </div>
-                  </>
-                )}
-              </div>
-            ))}
+                  ) : (
+                    <div style={{ padding: '12px', fontSize: 12, color: 'var(--muted-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted-2)' }} />
+                      Awaiting on-chain line…
+                    </div>
+                  )}
+                  {m.ou.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 10, color: 'var(--muted-2)', padding: '2px 12px', textTransform: 'uppercase', letterSpacing: '.05em' }}>O/U 2.5</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '4px 8px 8px' }}>
+                        {m.ou.map(o => {
+                          const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
+                          const isPos = (o.edge ?? 0) > 0
+                          return (
+                            <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
+                              border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
+                              borderRadius: 6, padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
+                              background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
+                              transition: 'all .15s',
+                            }}>
+                              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
+                              <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
+                                {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', position: 'sticky', top: '1rem' }}>
@@ -284,7 +293,7 @@ export default function Home() {
               ))}
             </div>
 
-            <div ref={chatRef} style={{ height: 380, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div ref={chatRef} style={{ height: 460, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {messages.map((m, i) => (
                 <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
                   <div style={{

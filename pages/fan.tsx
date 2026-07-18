@@ -150,7 +150,7 @@ export default function FanPage() {
   return (
     <>
       <Head><title>Canvas Cup — Prediction Game</title></Head>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem' }}>
+      <div style={{ padding: '1.5rem clamp(1rem, 3vw, 3rem)' }}>
         <Nav />
 
         {error && <div style={{ ...card, borderColor: 'rgba(239,68,68,.4)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}

@@ -15,7 +15,26 @@
   --serif: 'Cormorant Garamond', Georgia, serif;
 }
 
+/* Light theme — applied when <html data-theme="light">. Default is dark. */
+html[data-theme="light"] {
+  --bg: #FAF8F4;
+  --surface: #FFFFFF;
+  --surface-2: #F3F0EA;
+  --border: #E5E0D7;
+  --text: #1B1A20;
+  --muted: #6A6778;
+  --muted-2: #9C99A8;
+  --accent: #B7791F;
+  --accent-bg: rgba(183,121,31,.10);
+  --green: #16A34A;
+  --red: #DC2626;
+  --blue: #2563EB;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
 
 body {
   background: var(--bg);
@@ -23,10 +42,9 @@ body {
   font-family: var(--sans);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background .2s ease, color .2s ease;
 }
 
 a { color: inherit; text-decoration: none; }
 
-input, select, button {
-  font-family: var(--sans);
-}
+input, select, button { font-family: var(--sans); }

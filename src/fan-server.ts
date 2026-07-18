@@ -26,7 +26,7 @@ app.use(fanRouter);
 app.get("/health", (_req, res) => res.json({ ok: true, service: "canvas-cup" }));
 app.get("/", (_req, res) => res.redirect("/fan/"));
 
-const port = Number(process.env.FAN_PORT ?? "4400");
+const port = Number(process.env.PORT ?? process.env.FAN_PORT ?? "4400");
 app
   .listen(port, () => {
     logger.info(`Canvas Cup fan experience → http://localhost:${port}/fan/`);

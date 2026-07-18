@@ -8,9 +8,12 @@
  *
  *   npm run markets   →   http://localhost:4000/markets/
  *
- * There are NO static imports here on purpose: the env defaults below must run
- * before the shared config module is (dynamically) loaded.
+ * The only static import is the native-warning filter (it must run first and is
+ * config-independent); the env defaults below must still run before the shared
+ * config module is (dynamically) loaded.
  */
+import "@/utils/quiet-native-warnings.js";
+
 process.env.DATABASE_URL ??= "postgres://markets-demo:demo@localhost:5432/markets";
 process.env.TELEGRAM_BOT_TOKEN ??= "markets-demo";
 process.env.TELEGRAM_WEBHOOK_URL ??= "http://localhost:4000";
@@ -37,6 +40,16 @@ app.get("/health", (_req, res) => {
 app.get("/", (_req, res) => res.redirect("/markets/"));
 
 const port = Number(process.env.MARKETS_PORT ?? "4000");
-app.listen(port, () => {
-  logger.info(`Canvas Markets risk desk → http://localhost:${port}/markets/`);
-});
+app
+  .listen(port, () => {
+    logger.info(`Canvas Markets risk desk → http://localhost:${port}/markets/`);
+  })
+  .on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      logger.error(
+        `Port ${port} is already in use. Set MARKETS_PORT to a free port, e.g. MARKETS_PORT=4001 npm run markets`,
+      );
+      process.exit(1);
+    }
+    throw err;
+  });

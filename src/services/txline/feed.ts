@@ -34,12 +34,17 @@ function outcomeKey(name: string, index: number, count: number): string {
   return name.toUpperCase();
 }
 
-/** Pick the full-time 1X2 (3-way) market from a fixture's odds payloads. */
+/** Pick the full-time 1X2 result market from a fixture's odds payloads. */
 function pickMainMarket(odds: TxLineOddsPayload[]): TxLineOddsPayload | undefined {
+  // Only the 1X2 match-result market. A "draw" outcome is the reliable signal;
+  // never fall back to a 2-way market (e.g. Asian handicap) as the match result.
+  const is1x2 = (o: TxLineOddsPayload) =>
+    /1x2/i.test(o.SuperOddsType ?? "") || Boolean(o.PriceNames?.some((n) => /draw/i.test(n)));
   return (
+    odds.find((o) => is1x2(o) && !o.InRunning) ??
+    odds.find((o) => is1x2(o)) ??
     odds.find((o) => o.PriceNames?.length === 3 && !o.InRunning) ??
-    odds.find((o) => o.PriceNames?.length === 3) ??
-    odds[0]
+    odds.find((o) => o.PriceNames?.length === 3)
   );
 }
 
@@ -51,16 +56,21 @@ function toMatchOdds(fx: TxLineFixture, odds: TxLineOddsPayload[], source: FeedS
   let bestEdge = -Infinity;
 
   if (main && main.PriceNames?.length) {
+    const n = main.PriceNames.length;
+    // 1X2 display labels are the teams (raw feed names are "part1"/"draw"/"part2").
+    const label3 = [home, "Draw", away];
     const outcomes: MarketOutcome[] = main.PriceNames.map((name, i) => {
-      const decimalOdds = main.Prices?.[i] ?? 0;
-      // StablePrice Pct is de-margined; normalise if it arrives as 0..100.
-      const rawPct = main.Pct?.[i] ?? 0;
-      const fairProb = rawPct > 1 ? rawPct / 100 : rawPct;
-      const edge = decimalOdds > 0 ? fairProb * decimalOdds - 1 : 0;
+      // TxLINE Prices are milli-odds (3333 → 3.333); Pct is a percentage string
+      // ("30.003"). Normalise both, guarding malformed/missing values.
+      const rawPrice = Number(main.Prices?.[i]) || 0;
+      const decimalOdds = rawPrice > 100 ? rawPrice / 1000 : rawPrice;
+      const rawPct = Number(main.Pct?.[i]);
+      const fairProb = Number.isFinite(rawPct) ? (rawPct > 1 ? rawPct / 100 : rawPct) : 0;
+      const edge = decimalOdds > 0 && fairProb > 0 ? fairProb * decimalOdds - 1 : 0;
       if (edge > bestEdge) bestEdge = edge;
       return {
-        key: outcomeKey(name, i, main.PriceNames.length),
-        label: name,
+        key: outcomeKey(name, i, n),
+        label: n === 3 ? (label3[i] ?? name) : name,
         fairProb,
         decimalOdds,
         impliedProb: decimalOdds > 0 ? 1 / decimalOdds : 0,

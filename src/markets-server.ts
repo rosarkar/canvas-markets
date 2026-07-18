@@ -39,7 +39,7 @@ app.get("/health", (_req, res) => {
 // Convenience: root redirects to the desk.
 app.get("/", (_req, res) => res.redirect("/markets/"));
 
-const port = Number(process.env.MARKETS_PORT ?? "4000");
+const port = Number(process.env.PORT ?? process.env.MARKETS_PORT ?? "4000");
 app
   .listen(port, () => {
     logger.info(`Canvas Markets risk desk → http://localhost:${port}/markets/`);

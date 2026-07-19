@@ -109,6 +109,13 @@ export default function FanPage() {
     refresh(n)
   }
 
+  function changeHandle() {
+    try { localStorage.removeItem('canvas-cup-player') } catch { /* ignore */ }
+    setJoined(null)
+    setMe(null)
+    setName('')
+  }
+
   async function predict(matchId: string, outcome: string) {
     if (!joined) return
     try {
@@ -181,7 +188,15 @@ export default function FanPage() {
           </div>
         ) : (
           <div style={{ ...card, display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{me?.player.handle ?? joined}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 20, fontWeight: 600 }}>{me?.player.handle ?? joined}</span>
+              <button onClick={changeHandle} style={{
+                fontSize: 11, color: 'var(--muted)', background: 'transparent', border: 'none',
+                padding: 0, cursor: 'pointer', textDecoration: 'underline',
+              }}>
+                Change handle
+              </button>
+            </div>
             {[
               { label: 'Points', value: me ? String(me.player.points) : '—' },
               { label: 'Streak', value: me ? `${me.player.streak}🔥` : '—' },

@@ -69,6 +69,16 @@ function buildSystemPrompt(matches: Match[], sel: { match: Match; outcome: Outco
     lines.push('', `User is looking at: ${sel.outcome.label} — ${sel.match.home} vs ${sel.match.away}`)
     lines.push(`Edge: ${((sel.outcome.edge ?? 0) * 100).toFixed(1)}%, fair prob ${((sel.outcome.fairProb ?? 0) * 100).toFixed(1)}%`)
   }
+  lines.push(
+    '',
+    'Placing a bet on Polymarket: Polymarket does NOT list per-match 1X2 (match result) markets for the World Cup.',
+    'When a user asks to bet on Polymarket for a specific match, do not pretend such a market exists. Instead:',
+    '1. Acknowledge that Polymarket has no per-match 1X2 market for that fixture.',
+    '2. Point them to the closest equivalent — the World Cup winner (outright) market at https://polymarket.com/event/world-cup-winner.',
+    '3. Tell them which team to back there as the equivalent bet, e.g. "Back Argentina to win the World Cup at Polymarket — that\'s the closest equivalent to backing Argentina in this match."',
+    '4. Always include the direct link: https://polymarket.com/event/world-cup-winner',
+    'Back the same team the user wanted in the match on the winner market. This is a proxy, not an identical bet — be honest that it is the nearest available substitute.',
+  )
   lines.push('', 'Keep responses under 100 words. Be direct.')
   return lines.join('\n')
 }

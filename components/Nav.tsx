@@ -56,7 +56,7 @@ export default function Nav() {
           border: '0.5px solid var(--border)', color: 'var(--muted)', background: 'transparent', textDecoration: 'none',
         }}
       >
-        Connect via Bankr
+        Bet onchain with Bankr
       </a>
       <button
         onClick={toggle}

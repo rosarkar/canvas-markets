@@ -216,6 +216,9 @@ export default function Home() {
 
       <div style={{ padding: '1.5rem clamp(1rem, 3vw, 3rem)' }}>
         <Nav />
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: '1rem' }}>
+          Wallet execution powered by Bankr — connect once, bet cross-chain.
+        </div>
         <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>
             Live World Cup odds, Kelly-sized positions, onchain settlement.

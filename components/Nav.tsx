@@ -56,7 +56,7 @@ export default function Nav() {
           border: '0.5px solid var(--border)', color: 'var(--muted)', background: 'transparent', textDecoration: 'none',
         }}
       >
-        Connect Wallet
+        Connect via Bankr
       </a>
       <button
         onClick={toggle}

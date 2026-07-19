@@ -71,6 +71,24 @@ function buildSystemPrompt(matches: Match[], sel: { match: Match; outcome: Outco
   return lines.join('\n')
 }
 
+/** The single highest-edge outcome across the whole board, for the Top pick bar. */
+function topPickFrom(matches: Match[]): { match: Match; outcome: Outcome } | null {
+  let best: { match: Match; outcome: Outcome } | null = null
+  matches.forEach(m => {
+    [...m.outcomes, ...m.ou].forEach(o => {
+      if (!best || (o.edge ?? -Infinity) > (best.outcome.edge ?? -Infinity)) best = { match: m, outcome: o }
+    })
+  })
+  return best
+}
+
+/** A short, natural analysis prompt for a given outcome. */
+function promptFor(match: Match, outcome: Outcome): string {
+  const e = (outcome.edge ?? 0) * 100
+  const sign = e >= 0 ? '+' : ''
+  return `Analyse ${outcome.label} — ${match.home} vs ${match.away} (${outcome.market.toFixed(2)} odds, ${sign}${e.toFixed(1)}% edge). Size it and flag the risk.`
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -80,6 +98,7 @@ export default function Home() {
   const [matches, setMatches] = useState<Match[]>(SAMPLE)
   const [feed, setFeed] = useState<{ live: boolean; provenance?: Provenance }>({ live: false })
   const chatRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
@@ -136,15 +155,17 @@ export default function Home() {
     setLoading(false)
   }
 
-  function selectOutcome(match: Match, outcome: Outcome) {
+  // Tapping an outcome auto-populates the agent input with that match + outcome.
+  function pickOutcome(match: Match, outcome: Outcome) {
     setSelected({ match, outcome })
-    const e = (outcome.edge ?? 0) * 100
-    const fp = (outcome.fairProb ?? 0) * 100
-    const stake = kelly(outcome.fairProb ?? 0, outcome.market) * 0.5 * bankroll
-    const msg = e > 0
-      ? `Selected ${outcome.label} — ${match.home} vs ${match.away}. Edge: +${e.toFixed(1)}%, fair prob ${fp.toFixed(1)}%, half-Kelly stake $${stake.toFixed(0)} on a $${bankroll} bankroll. Want the full risk breakdown or hedge?`
-      : `${outcome.label} — ${match.home} vs ${match.away}: edge ${e.toFixed(1)}%, fair prob ${fp.toFixed(1)}%. This is the de-margined fair line, so there's little to no edge. Want me to size it or hedge anyway?`
-    addAgentMessage(msg)
+    setInput(promptFor(match, outcome))
+    inputRef.current?.focus()
+  }
+
+  // Top pick "Analyse →" sends the highest-edge outcome straight to the agent.
+  function analyse(match: Match, outcome: Outcome) {
+    setSelected({ match, outcome })
+    send(promptFor(match, outcome))
   }
 
   const chips = [
@@ -155,6 +176,8 @@ export default function Home() {
     'What is my ruin risk?',
   ]
 
+  const top = topPickFrom(matches)
+
   return (
     <>
       <Head>
@@ -164,109 +187,95 @@ export default function Home() {
 
       <div style={{ padding: '1.5rem clamp(1rem, 3vw, 3rem)' }}>
         <Nav />
-        <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '0.5px solid var(--border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
+        <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-            Risk-managed World Cup copilot — TxLINE StablePrice → Kelly sizing → Bankr settlement
+            Risk-managed World Cup copilot — TxLINE StablePrice, Kelly sizing, Bankr settlement
           </span>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
-              fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, textDecoration: 'none',
-              color: 'var(--accent)', background: 'var(--accent-bg)', border: '0.5px solid rgba(233,168,76,.4)',
+              fontSize: 11, fontWeight: 600, padding: '4px 10px', textDecoration: 'none',
+              color: 'var(--text)', border: '1px solid var(--border)',
               display: 'inline-flex', alignItems: 'center', gap: 5,
             }}>
-              <i className="ti ti-shield-check" aria-hidden="true" style={{ fontSize: 13 }} /> Verify on-chain
+              Verify on-chain
             </Link>
             <span style={{
-              fontSize: 11, padding: '3px 8px', borderRadius: 6,
-              border: `0.5px solid ${feed.live ? 'rgba(74,222,128,.35)' : 'var(--border)'}`,
+              fontSize: 11, padding: '3px 8px', border: '1px solid var(--border)',
               color: feed.live ? 'var(--green)' : 'var(--muted)',
-              background: feed.live ? 'rgba(74,222,128,.08)' : 'var(--surface)',
             }}>
-              {feed.live ? '● Live · TxLINE StablePrice' : 'Sample fixtures'}
+              {feed.live ? 'Live · TxLINE StablePrice' : 'Sample fixtures'}
             </span>
             {feed.live && feed.provenance?.rootExplorerUrl && (
               <a href={feed.provenance.rootExplorerUrl} target="_blank" rel="noreferrer" style={{
-                fontSize: 11, padding: '3px 8px', borderRadius: 6, textDecoration: 'none',
-                border: '0.5px solid rgba(233,168,76,.3)', color: 'var(--accent)', background: 'var(--accent-bg)',
+                fontSize: 11, padding: '3px 8px', textDecoration: 'none',
+                border: '1px solid var(--border)', color: 'var(--text)',
               }}>
                 on-chain ✓
               </a>
             )}
-            <span style={{ fontSize: 11, padding: '3px 8px', border: '0.5px solid var(--border)', borderRadius: 6, color: 'var(--muted)', background: 'var(--surface)' }}>Simulated settlement</span>
+            <span style={{ fontSize: 11, padding: '3px 8px', border: '1px solid var(--border)', color: 'var(--muted)' }}>Simulated settlement</span>
           </div>
         </header>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '1.5rem', alignItems: 'start' }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+            {top && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14,
+                background: '#000', color: '#fff', border: '1px solid #000', padding: '12px 16px',
+              }}>
+                <span style={{ fontSize: 11, color: '#bbb', letterSpacing: '.02em' }}>Top pick</span>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>
+                  {top.outcome.label} — {top.match.home} vs {top.match.away}
+                </span>
+                <span style={{
+                  fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em',
+                  color: (top.outcome.edge ?? 0) >= 0 ? 'var(--green)' : 'var(--red)',
+                }}>
+                  {(top.outcome.edge ?? 0) >= 0 ? '+' : ''}{((top.outcome.edge ?? 0) * 100).toFixed(1)}%
+                </span>
+                <button onClick={() => analyse(top.match, top.outcome)} style={{
+                  marginLeft: 'auto', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  background: '#fff', color: '#000', border: '1px solid #fff', padding: '6px 14px',
+                }}>
+                  Analyse →
+                </button>
+              </div>
+            )}
+
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
               World Cup board — tap an outcome to analyse
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
               {matches.map(m => (
                 <div key={m.id} style={{
                   background: 'var(--surface)',
-                  border: `0.5px solid ${selected?.match.id === m.id ? 'rgba(233,168,76,.5)' : 'var(--border)'}`,
-                  borderRadius: 10,
-                  overflow: 'hidden',
+                  border: `1px solid var(--border)`,
+                  outline: selected?.match.id === m.id ? '1px solid var(--border)' : 'none',
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '0.5px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                     <div>
                       <div style={{ fontWeight: 500, fontSize: 14 }}>{m.home} vs {m.away}</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.stage}</div>
                     </div>
                     {m.status === 'live' && (
-                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'rgba(74,222,128,.1)', color: 'var(--green)', border: '0.5px solid rgba(74,222,128,.3)' }}>● live</span>
+                      <span style={{ fontSize: 10, padding: '2px 7px', border: '1px solid var(--green)', color: 'var(--green)' }}>live</span>
                     )}
                   </div>
                   {m.outcomes.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: '8px 8px' }}>
-                      {m.outcomes.map(o => {
-                        const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
-                        const isPos = (o.edge ?? 0) > 0
-                        return (
-                          <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
-                            border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
-                            borderRadius: 6, padding: '7px 4px', textAlign: 'center', cursor: 'pointer',
-                            background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
-                            transition: 'all .15s',
-                          }}>
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</div>
-                            <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
-                            <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
-                              {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
-                            </div>
-                          </button>
-                        )
-                      })}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, padding: 8 }}>
+                      {m.outcomes.map(o => <OutcomeCell key={o.key} m={m} o={o} selected={selected} onPick={pickOutcome} />)}
                     </div>
                   ) : (
-                    <div style={{ padding: '12px', fontSize: 12, color: 'var(--muted-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted-2)' }} />
+                    <div style={{ padding: '12px', fontSize: 12, color: 'var(--muted-2)' }}>
                       Awaiting on-chain line…
                     </div>
                   )}
                   {m.ou.length > 0 && (
                     <>
-                      <div style={{ fontSize: 10, color: 'var(--muted-2)', padding: '2px 12px', textTransform: 'uppercase', letterSpacing: '.05em' }}>O/U 2.5</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '4px 8px 8px' }}>
-                        {m.ou.map(o => {
-                          const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
-                          const isPos = (o.edge ?? 0) > 0
-                          return (
-                            <button key={o.key} onClick={() => selectOutcome(m, o)} style={{
-                              border: `0.5px solid ${isSel ? 'var(--accent)' : isPos ? 'rgba(74,222,128,.3)' : 'var(--border)'}`,
-                              borderRadius: 6, padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
-                              background: isSel ? 'var(--accent-bg)' : isPos ? 'rgba(74,222,128,.05)' : 'var(--surface-2)',
-                              transition: 'all .15s',
-                            }}>
-                              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
-                              <div style={{ fontSize: 13, fontWeight: 500 }}>{o.market.toFixed(2)}</div>
-                              <div style={{ fontSize: 10, color: isPos ? 'var(--green)' : 'var(--muted-2)', marginTop: 1 }}>
-                                {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
-                              </div>
-                            </button>
-                          )
-                        })}
+                      <div style={{ fontSize: 10, color: 'var(--muted-2)', padding: '2px 12px' }}>O/U 2.5</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, padding: '4px 8px 8px' }}>
+                        {m.ou.map(o => <OutcomeCell key={o.key} m={m} o={o} selected={selected} onPick={pickOutcome} />)}
                       </div>
                     </>
                   )}
@@ -275,86 +284,74 @@ export default function Home() {
             </div>
           </div>
 
-          <div style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', position: 'sticky', top: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid var(--border)' }}>
-              <i className="ti ti-robot" aria-hidden="true" style={{ fontSize: 14, color: 'var(--accent)' }} />
-              <span style={{ fontSize: 13, fontWeight: 500 }}>Risk agent</span>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', position: 'sticky', top: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: '#000' }}>Agent</span>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>bankroll</span>
                 <input
                   type="number"
                   value={bankroll}
                   onChange={e => setBankroll(Number(e.target.value))}
-                  style={{ width: 70, fontSize: 12, background: 'var(--surface-2)', border: '0.5px solid var(--border)', borderRadius: 6, padding: '3px 6px', color: 'var(--text)' }}
+                  style={{ width: 70, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', padding: '3px 6px', color: 'var(--text)' }}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '6px 10px', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
               {chips.map(c => (
                 <button key={c} onClick={() => send(c)} style={{
-                  fontSize: 11, padding: '3px 8px', border: '0.5px solid var(--border)', borderRadius: 20,
-                  cursor: 'pointer', color: 'var(--muted)', background: 'var(--surface-2)',
+                  fontSize: 11, padding: '3px 8px', border: '1px solid var(--border)',
+                  cursor: 'pointer', color: 'var(--text)', background: 'var(--surface)',
                 }}>
                   {c}
                 </button>
               ))}
             </div>
 
-            <div ref={chatRef} style={{ height: 460, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div ref={chatRef} style={{ height: 460, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {messages.map((m, i) => (
-                <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted-2)', marginBottom: 3 }}>{m.role === 'user' ? 'You' : 'Agent'}</div>
                   <div style={{
-                    width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 9, fontWeight: 600, flexShrink: 0,
-                    background: m.role === 'user' ? 'var(--surface-2)' : 'var(--accent-bg)',
-                    color: m.role === 'user' ? 'var(--muted)' : 'var(--accent)',
-                  }}>
-                    {m.role === 'user' ? 'U' : 'CV'}
-                  </div>
-                  <div style={{
-                    borderRadius: m.role === 'user' ? '10px 2px 10px 10px' : '2px 10px 10px 10px',
-                    padding: '7px 10px', maxWidth: '85%', fontSize: 13, lineHeight: 1.5,
-                    background: m.role === 'user' ? 'rgba(233,168,76,.1)' : 'var(--surface-2)',
-                    color: m.role === 'user' ? 'var(--accent)' : 'var(--text)',
-                    border: '0.5px solid var(--border)',
+                    padding: '7px 10px', maxWidth: '90%', fontSize: 13, lineHeight: 1.5,
+                    background: 'var(--surface)', color: 'var(--text)',
+                    border: '1px solid var(--border)',
                   }}>
                     {m.content}
                   </div>
                 </div>
               ))}
               {loading && (
-                <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--accent)' }}>CV</div>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '10px 12px', background: 'var(--surface-2)', borderRadius: '2px 10px 10px 10px', border: '0.5px solid var(--border)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted-2)', marginBottom: 3 }}>Agent</div>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
                     {[0, 150, 300].map(d => (
-                      <div key={d} style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted)', animation: `bounce .9s ${d}ms infinite` }} />
+                      <div key={d} style={{ width: 5, height: 5, background: 'var(--text)', animation: `bounce .9s ${d}ms infinite` }} />
                     ))}
                   </div>
                 </div>
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 6, padding: 10, borderTop: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', gap: 6, padding: 10, borderTop: '1px solid var(--border)' }}>
               <input
+                ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && send()}
                 placeholder="Ask about any position…"
                 style={{
-                  flex: 1, fontSize: 13, background: 'var(--surface-2)', border: '0.5px solid var(--border)',
-                  borderRadius: 8, padding: '8px 10px', color: 'var(--text)',
+                  flex: 1, fontSize: 13, background: 'var(--surface)', border: '1px solid var(--border)',
+                  padding: '8px 10px', color: 'var(--text)',
                 }}
               />
               <button onClick={() => send()} disabled={loading} style={{
-                padding: '8px 14px', border: '0.5px solid var(--border)', borderRadius: 8,
-                background: 'var(--surface-2)', color: 'var(--accent)', fontSize: 13, cursor: 'pointer',
+                padding: '8px 16px', border: '1px solid var(--border)',
+                background: '#000', color: '#fff', fontSize: 13, cursor: 'pointer',
               }}>
-                <i className="ti ti-arrow-right" aria-hidden="true" />
+                Send
               </button>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--muted-2)', textAlign: 'center', padding: '4px 10px 8px' }}>
-              Not financial advice · settlement simulated
             </div>
           </div>
         </div>
@@ -362,10 +359,36 @@ export default function Home() {
 
       <style>{`
         @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
-        button:hover { opacity: .85; }
-        input:focus { outline: none; border-color: var(--accent) !important; }
-        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        button:hover { opacity: .8; }
+        input:focus { outline: none; border-color: #000 !important; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); }
       `}</style>
     </>
+  )
+}
+
+// One outcome cell — edge is the largest number (green if positive, red if
+// negative), decimal odds smaller and secondary. Selected cell inverts to black.
+function OutcomeCell({ m, o, selected, onPick }: {
+  m: Match
+  o: Outcome
+  selected: { match: Match; outcome: Outcome } | null
+  onPick: (m: Match, o: Outcome) => void
+}) {
+  const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
+  const isPos = (o.edge ?? 0) > 0
+  const edgeColor = isSel ? (isPos ? '#4ade80' : '#f87171') : (isPos ? 'var(--green)' : 'var(--red)')
+  return (
+    <button onClick={() => onPick(m, o)} style={{
+      border: '1px solid var(--border)', padding: '8px 4px', textAlign: 'center', cursor: 'pointer',
+      background: isSel ? '#000' : 'var(--surface)', color: isSel ? '#fff' : 'var(--text)',
+      display: 'flex', flexDirection: 'column', gap: 3,
+    }}>
+      <div style={{ fontSize: 11, color: isSel ? '#bbb' : 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: edgeColor }}>
+        {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
+      </div>
+      <div style={{ fontSize: 11, color: isSel ? '#bbb' : 'var(--muted-2)' }}>{o.market.toFixed(2)} odds</div>
+    </button>
   )
 }

@@ -56,11 +56,16 @@ interface AgentMatch {
   outcomes: { key: string; label: string }[]
 }
 
-const cell: React.CSSProperties = { padding: '6px 8px', fontSize: 12, borderBottom: '0.5px solid var(--border)', textAlign: 'left' }
-const th: React.CSSProperties = { ...cell, color: 'var(--muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em' }
-const card: React.CSSProperties = { background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 12 }
-const btn: React.CSSProperties = { fontSize: 12, padding: '6px 14px', border: '0.5px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', cursor: 'pointer' }
-const inp: React.CSSProperties = { fontSize: 12, background: 'var(--surface-2)', border: '0.5px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: 80 }
+const cell: React.CSSProperties = { padding: '6px 8px', fontSize: 12, borderBottom: '1px solid var(--border)', textAlign: 'left' }
+const th: React.CSSProperties = { ...cell, color: 'var(--muted)', fontSize: 11 }
+const card: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', padding: 14, marginBottom: 12 }
+// Secondary button: white fill, black border, black text.
+const btn: React.CSSProperties = { fontSize: 12, padding: '6px 14px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }
+// Primary action: black fill, white text.
+const btnFill: React.CSSProperties = { ...btn, background: '#000', color: '#fff', border: '1px solid #000' }
+// Kill switch: red fill, white text.
+const btnKill: React.CSSProperties = { ...btn, background: '#dc2626', color: '#fff', border: '1px solid #dc2626' }
+const inp: React.CSSProperties = { fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', padding: '4px 8px', color: 'var(--text)', width: 80 }
 
 async function api(path: string, body?: unknown) {
   const res = await fetch(`/api/agent/${path}`, body === undefined
@@ -147,36 +152,32 @@ export default function AgentPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>Autonomous risk-limited betting agent — TxLINE StablePrice, Kelly-sized, kill switch</span>
           <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
-            marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, textDecoration: 'none',
-            color: 'var(--accent)', background: 'var(--accent-bg)', border: '0.5px solid rgba(233,168,76,.4)',
+            marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', textDecoration: 'none',
+            color: 'var(--text)', border: '1px solid var(--border)',
             display: 'inline-flex', alignItems: 'center', gap: 5,
           }}>
-            <i className="ti ti-shield-check" aria-hidden="true" style={{ fontSize: 13 }} /> Verify on-chain
+            Verify on-chain
           </Link>
         </div>
 
         {error && (
-          <div style={{ ...card, borderColor: 'rgba(239,68,68,.4)', color: 'var(--red)', fontSize: 13 }}>{error}</div>
+          <div style={{ ...card, borderColor: 'var(--red)', color: 'var(--red)', fontSize: 13 }}>{error}</div>
         )}
 
         {/* Controls */}
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => act(state?.running ? 'stop' : 'start')} style={{
-            ...btn,
-            color: state?.running ? 'var(--red)' : 'var(--green)',
-            borderColor: state?.running ? 'rgba(239,68,68,.4)' : 'rgba(74,222,128,.4)',
-          }}>
-            {state?.running ? '■ Stop' : '▶ Start'}
+          <button onClick={() => act(state?.running ? 'stop' : 'start')} style={btnFill}>
+            {state?.running ? 'Stop' : 'Start'}
           </button>
-          <button onClick={() => act('tick')} style={btn}>Step</button>
-          <button onClick={() => act('reset', { bankroll: bankrollInput })} style={btn}>Reset</button>
+          <button onClick={() => act('tick')} style={btnFill}>Step</button>
+          <button onClick={() => act('reset', { bankroll: bankrollInput })} style={btnFill}>Reset</button>
           <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 8 }}>bankroll</span>
           <input type="number" value={bankrollInput} onChange={e => setBankrollInput(Number(e.target.value))} style={inp} />
           <button
             onClick={() => act('stop').then(() => act('risk', { maxStakeUsd: 0 }))}
-            style={{ ...btn, marginLeft: 'auto', color: 'var(--red)', borderColor: 'rgba(239,68,68,.5)', background: 'rgba(239,68,68,.08)' }}
+            style={{ ...btnKill, marginLeft: 'auto' }}
           >
-            ⛔ Kill switch
+            Kill switch
           </button>
           {state && (
             <span style={{ fontSize: 11, color: 'var(--muted-2)' }}>
@@ -194,8 +195,8 @@ export default function AgentPage() {
             { label: 'Decisions', value: state ? String(state.decisions.length) : '—' },
           ].map(s => (
             <div key={s.label} style={card}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{s.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 600, fontFamily: 'var(--serif)', color: s.color ?? 'var(--text)' }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 600, color: s.color ?? 'var(--text)' }}>{s.value}</div>
             </div>
           ))}
         </div>
@@ -204,7 +205,7 @@ export default function AgentPage() {
           <div>
             {/* Risk sliders */}
             <div style={card}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>Risk limits</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Risk limits</div>
               {RISK_SLIDERS.map(s => (
                 <div key={s.key} style={{ marginBottom: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
@@ -225,15 +226,15 @@ export default function AgentPage() {
 
             {/* Inject goal */}
             <div style={card}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>Goal event trigger</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Goal event trigger</div>
               <select value={goalMatch} onChange={e => setGoalMatch(e.target.value)} style={{ ...inp, width: '100%', marginBottom: 6 }}>
                 {matches.map(m => <option key={m.id} value={m.id}>{m.home} vs {m.away}</option>)}
               </select>
               <select value={goalOutcome} onChange={e => setGoalOutcome(e.target.value)} style={{ ...inp, width: '100%', marginBottom: 8 }}>
                 {(selMatch?.outcomes ?? []).map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
-              <button onClick={() => act('goal', { matchId: goalMatch, outcome: goalOutcome })} style={{ ...btn, width: '100%', color: 'var(--accent)' }}>
-                ⚽ Inject goal
+              <button onClick={() => act('goal', { matchId: goalMatch, outcome: goalOutcome })} style={{ ...btn, width: '100%' }}>
+                Inject goal
               </button>
             </div>
           </div>
@@ -241,7 +242,7 @@ export default function AgentPage() {
           <div>
             {/* Decision feed */}
             <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '10px 14px', borderBottom: '0.5px solid var(--border)' }}>Decision feed</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>Decision feed</div>
               <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr>
@@ -251,11 +252,11 @@ export default function AgentPage() {
                     {(state?.decisions ?? []).slice().reverse().map(d => (
                       <tr key={d.id}>
                         <td style={{ ...cell, color: 'var(--muted-2)' }}>{new Date(d.ts).toLocaleTimeString()}</td>
-                        <td style={{ ...cell, color: d.strategy === 'goal' ? 'var(--accent)' : 'var(--muted)' }}>{d.strategy}{d.verified ? ' ✓' : ''}</td>
+                        <td style={{ ...cell, color: 'var(--muted)' }}>{d.strategy}{d.verified ? ' ✓' : ''}</td>
                         <td style={cell}>{d.matchLabel}</td>
                         <td style={cell}>{d.selectionLabel}</td>
-                        <td style={{ ...cell, color: d.edge > 0 ? 'var(--green)' : 'var(--muted-2)' }}>{d.edge > 0 ? '+' : ''}{(d.edge * 100).toFixed(1)}%</td>
-                        <td style={{ ...cell, color: ACTION_COLORS[d.action], textTransform: 'uppercase', fontSize: 10, fontWeight: 600 }} title={d.reason}>{d.action}</td>
+                        <td style={{ ...cell, color: d.edge > 0 ? 'var(--green)' : 'var(--red)' }}>{d.edge > 0 ? '+' : ''}{(d.edge * 100).toFixed(1)}%</td>
+                        <td style={{ ...cell, color: ACTION_COLORS[d.action], fontSize: 11, fontWeight: 600 }} title={d.reason}>{d.action}</td>
                       </tr>
                     ))}
                     {!state?.decisions.length && (
@@ -268,7 +269,7 @@ export default function AgentPage() {
 
             {/* Positions */}
             <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '10px 14px', borderBottom: '0.5px solid var(--border)' }}>Positions</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>Positions</div>
               <div style={{ maxHeight: 260, overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr>
@@ -281,7 +282,7 @@ export default function AgentPage() {
                         <td style={{ ...cell, color: 'var(--muted)' }}>{p.strategy}</td>
                         <td style={cell}>${p.stake.toFixed(2)}</td>
                         <td style={cell}>{p.decimalOdds.toFixed(2)}</td>
-                        <td style={{ ...cell, color: STATUS_COLORS[p.status], textTransform: 'uppercase', fontSize: 10, fontWeight: 600 }}>{p.status}</td>
+                        <td style={{ ...cell, color: STATUS_COLORS[p.status], fontSize: 11, fontWeight: 600 }}>{p.status}</td>
                         <td style={{ ...cell, color: p.pnl > 0 ? 'var(--green)' : p.pnl < 0 ? 'var(--red)' : 'var(--muted-2)' }}>
                           {p.status === 'open' ? '—' : `${p.pnl >= 0 ? '+' : ''}$${p.pnl.toFixed(2)}`}
                         </td>
@@ -301,7 +302,7 @@ export default function AgentPage() {
           Not financial advice · settlement simulated
         </div>
       </div>
-      <style>{`button:hover { opacity: .85; } input:focus, select:focus { outline: none; border-color: var(--accent) !important; }`}</style>
+      <style>{`button:hover { opacity: .8; } input:focus, select:focus { outline: none; border-color: #000 !important; }`}</style>
     </>
   )
 }

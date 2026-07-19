@@ -49,11 +49,14 @@ interface SettleResult {
   proof?: { verified: boolean; rootPda?: string }
 }
 
-const card: React.CSSProperties = { background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 12 }
-const btn: React.CSSProperties = { fontSize: 12, padding: '6px 14px', border: '0.5px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', cursor: 'pointer' }
-const inp: React.CSSProperties = { fontSize: 13, background: 'var(--surface-2)', border: '0.5px solid var(--border)', borderRadius: 8, padding: '8px 10px', color: 'var(--text)' }
-const cell: React.CSSProperties = { padding: '6px 8px', fontSize: 12, borderBottom: '0.5px solid var(--border)', textAlign: 'left' }
-const th: React.CSSProperties = { ...cell, color: 'var(--muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em' }
+const card: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', padding: 14, marginBottom: 12 }
+// Secondary button: white fill, black border, black text.
+const btn: React.CSSProperties = { fontSize: 12, padding: '6px 14px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }
+// Primary action: black fill, white text.
+const btnFill: React.CSSProperties = { ...btn, background: '#000', color: '#fff', border: '1px solid #000' }
+const inp: React.CSSProperties = { fontSize: 13, background: 'var(--surface)', border: '1px solid var(--border)', padding: '8px 10px', color: 'var(--text)' }
+const cell: React.CSSProperties = { padding: '6px 8px', fontSize: 12, borderBottom: '1px solid var(--border)', textAlign: 'left' }
+const th: React.CSSProperties = { ...cell, color: 'var(--muted)', fontSize: 11 }
 
 const STATUS_COLORS: Record<string, string> = { open: 'var(--blue)', won: 'var(--green)', lost: 'var(--red)', void: 'var(--muted-2)' }
 
@@ -157,15 +160,15 @@ export default function FanPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>Points prediction game — provably-fair, Merkle-anchored settlement</span>
           <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
-            marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, textDecoration: 'none',
-            color: 'var(--accent)', background: 'var(--accent-bg)', border: '0.5px solid rgba(233,168,76,.4)',
+            marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', textDecoration: 'none',
+            color: 'var(--text)', border: '1px solid var(--border)',
             display: 'inline-flex', alignItems: 'center', gap: 5,
           }}>
-            <i className="ti ti-shield-check" aria-hidden="true" style={{ fontSize: 13 }} /> Verify on-chain
+            Verify on-chain
           </Link>
         </div>
 
-        {error && <div style={{ ...card, borderColor: 'rgba(239,68,68,.4)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
+        {error && <div style={{ ...card, borderColor: 'var(--red)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
 
         {!joined ? (
           <div style={{ ...card, display: 'flex', gap: 8, alignItems: 'center', maxWidth: 440 }}>
@@ -174,20 +177,20 @@ export default function FanPage() {
               onKeyDown={e => e.key === 'Enter' && join()}
               placeholder="Pick a handle to join…" style={{ ...inp, flex: 1 }}
             />
-            <button onClick={join} style={{ ...btn, color: 'var(--accent)' }}>Join the Cup</button>
+            <button onClick={join} style={btnFill}>Join the Cup</button>
           </div>
         ) : (
           <div style={{ ...card, display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 600 }}>{me?.player.handle ?? joined}</div>
+            <div style={{ fontSize: 20, fontWeight: 600 }}>{me?.player.handle ?? joined}</div>
             {[
-              { label: 'Points', value: me ? String(me.player.points) : '—', color: 'var(--accent)' },
+              { label: 'Points', value: me ? String(me.player.points) : '—' },
               { label: 'Streak', value: me ? `${me.player.streak}🔥` : '—' },
               { label: 'Record', value: me ? `${me.player.wins}W–${me.player.losses}L` : '—' },
               { label: 'Rank', value: me?.rank ? `#${me.rank}` : 'unranked' },
             ].map(s => (
               <div key={s.label}>
-                <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{s.label}</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: (s as { color?: string }).color ?? 'var(--text)' }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.label}</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{s.value}</div>
               </div>
             ))}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -199,15 +202,14 @@ export default function FanPage() {
         )}
 
         {lastSettle && (
-          <div style={{ ...card, borderColor: 'rgba(233,168,76,.4)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ ...card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13 }}>
               <b>{lastSettle.matchLabel}</b> settled {lastSettle.score} — {lastSettle.winningLabel} wins
             </span>
             <span style={{
-              fontSize: 10, padding: '3px 8px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600,
-              background: lastSettle.proof?.verified ? 'rgba(74,222,128,.1)' : 'var(--accent-bg)',
-              color: lastSettle.proof?.verified ? 'var(--green)' : 'var(--accent)',
-              border: `0.5px solid ${lastSettle.proof?.verified ? 'rgba(74,222,128,.3)' : 'rgba(233,168,76,.3)'}`,
+              fontSize: 11, padding: '3px 8px', fontWeight: 600,
+              color: lastSettle.proof?.verified ? 'var(--green)' : 'var(--muted)',
+              border: `1px solid ${lastSettle.proof?.verified ? 'var(--green)' : 'var(--border)'}`,
             }}>
               {lastSettle.proof?.verified ? '✓ verified on-chain' : 'demonstration tier'}
             </span>
@@ -217,38 +219,38 @@ export default function FanPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 12, alignItems: 'start' }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
               Match board {joined ? '— tap an outcome to predict' : '— join to play'}
             </div>
             {matches.map(m => (
-              <div key={m.id} style={{ ...card, padding: 0, overflow: 'hidden', opacity: m.settled ? 0.55 : 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '0.5px solid var(--border)' }}>
+              <div key={m.id} style={{ ...card, padding: 0, opacity: m.settled ? 0.55 : 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                   <div>
                     <span style={{ fontWeight: 500, fontSize: 14 }}>{m.home} vs {m.away}</span>
                     <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>{m.stage}</span>
                   </div>
                   {m.settled ? (
-                    <span style={{ fontSize: 10, color: 'var(--muted-2)', textTransform: 'uppercase' }}>settled</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted-2)' }}>settled</span>
                   ) : (
                     <button onClick={() => settle(m.id)} disabled={settling === m.id} style={{ ...btn, padding: '3px 10px', fontSize: 11 }}>
-                      {settling === m.id ? 'settling…' : '🎲 Simulate result'}
+                      {settling === m.id ? 'settling…' : 'Simulate result'}
                     </button>
                   )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, padding: 8 }}>
                   {m.outcomes.map(o => (
                     <button
                       key={o.key}
                       onClick={() => predict(m.id, o.key)}
                       disabled={!joined || m.settled}
                       style={{
-                        border: '0.5px solid var(--border)', borderRadius: 6, padding: '7px 4px', textAlign: 'center',
-                        cursor: joined && !m.settled ? 'pointer' : 'default', background: 'var(--surface-2)',
+                        border: '1px solid var(--border)', padding: '8px 4px', textAlign: 'center',
+                        cursor: joined && !m.settled ? 'pointer' : 'default', background: 'var(--surface)',
                       }}
                     >
                       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{o.label}</div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{o.decimalOdds.toFixed(2)}</div>
-                      <div style={{ fontSize: 10, color: 'var(--muted-2)' }}>{(o.fairProb * 100).toFixed(0)}% fair</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>{o.decimalOdds.toFixed(2)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>{(o.fairProb * 100).toFixed(0)}% fair</div>
                     </button>
                   ))}
                 </div>
@@ -260,7 +262,7 @@ export default function FanPage() {
           <div>
             {/* Leaderboard */}
             <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '10px 14px', borderBottom: '0.5px solid var(--border)' }}>Leaderboard</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>Leaderboard</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr><th style={th}>#</th><th style={th}>Player</th><th style={th}>Points</th><th style={th}>Streak</th></tr></thead>
                 <tbody>
@@ -268,7 +270,7 @@ export default function FanPage() {
                     <tr key={p.handle} style={{ background: p.handle === joined ? 'var(--accent-bg)' : 'transparent' }}>
                       <td style={{ ...cell, color: 'var(--muted-2)' }}>{i + 1}</td>
                       <td style={cell}>{p.handle}</td>
-                      <td style={{ ...cell, color: 'var(--accent)' }}>{p.points}</td>
+                      <td style={{ ...cell, fontWeight: 600 }}>{p.points}</td>
                       <td style={cell}>{p.streak > 0 ? `${p.streak}🔥` : '—'}</td>
                     </tr>
                   ))}
@@ -280,7 +282,7 @@ export default function FanPage() {
             {/* My predictions */}
             {joined && (
               <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '10px 14px', borderBottom: '0.5px solid var(--border)' }}>Your predictions</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>Your predictions</div>
                 <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead><tr><th style={th}>Pick</th><th style={th}>Stake</th><th style={th}>Status</th><th style={th}>Payout</th></tr></thead>
@@ -289,7 +291,7 @@ export default function FanPage() {
                         <tr key={p.id}>
                           <td style={cell} title={p.matchLabel}>{p.selectionLabel} @ {p.decimalOdds.toFixed(2)}</td>
                           <td style={cell}>{p.stakePoints}</td>
-                          <td style={{ ...cell, color: STATUS_COLORS[p.status], textTransform: 'uppercase', fontSize: 10, fontWeight: 600 }}>
+                          <td style={{ ...cell, color: STATUS_COLORS[p.status], fontSize: 11, fontWeight: 600 }}>
                             {p.status}{p.verified ? ' ✓' : ''}
                           </td>
                           <td style={{ ...cell, color: p.payoutPoints > 0 ? 'var(--green)' : 'var(--muted-2)' }}>
@@ -310,7 +312,7 @@ export default function FanPage() {
           Points game · settlement provably fair · not financial advice
         </div>
       </div>
-      <style>{`button:hover:not(:disabled) { opacity: .85; } input:focus { outline: none; border-color: var(--accent) !important; }`}</style>
+      <style>{`button:hover:not(:disabled) { opacity: .8; } input:focus { outline: none; border-color: #000 !important; }`}</style>
     </>
   )
 }

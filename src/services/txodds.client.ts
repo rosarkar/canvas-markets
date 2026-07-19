@@ -27,6 +27,16 @@ export interface MarketOutcome {
   impliedProb: number;
   /** fairProb·decimalOdds − 1: expected value per unit staked. */
   edge: number;
+  /**
+   * Polymarket's implied probability for this outcome (normalised 1X2), or null
+   * when Polymarket has no market for the fixture. Populated by `enrichWithPolymarket`.
+   */
+  polymarketProb?: number | null;
+  /**
+   * fairProb − polymarketProb: positive means TxLINE rates the outcome higher
+   * than Polymarket prices it (underpriced on Polymarket). null when unavailable.
+   */
+  polymarketEdge?: number | null;
 }
 
 export interface MarketView {

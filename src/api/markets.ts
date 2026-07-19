@@ -15,6 +15,7 @@ import { Router, type Request, type Response } from "express";
 
 import { type MatchOdds, type MarketOutcome } from "@/services/txodds.client.js";
 import { resolveOddsFeed } from "@/services/odds-feed.js";
+import { enrichWithPolymarket } from "@/services/polymarket.js";
 import { assessSelection, lockInHedge } from "@/services/risk/index.js";
 import { parseBetIntent, explainAssessment } from "@/services/markets-agent.js";
 import { settle, type SettlementLegInput } from "@/services/markets-settle.js";
@@ -40,7 +41,7 @@ function findOutcome(
 marketsRouter.get("/api/markets", async (_req: Request, res: Response) => {
   try {
     const feed = (await resolveOddsFeed());
-    const matches = await feed.getMatches();
+    const matches = await enrichWithPolymarket(await feed.getMatches());
     res.json({
       source: feed.source,
       settlementMode: config.markets.liveSettlement ? "live" : "simulated",
@@ -61,7 +62,8 @@ marketsRouter.get("/api/markets/match/:id", async (req: Request, res: Response) 
       res.status(404).json({ error: "Match not found" });
       return;
     }
-    res.json(match);
+    const [enriched] = await enrichWithPolymarket([match]);
+    res.json(enriched);
   } catch (err) {
     logger.error({ err }, "GET /api/markets/match failed");
     res.status(500).json({ error: "Failed to load match" });

@@ -3,8 +3,8 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 
 const LINKS = [
-  { href: '/', label: 'Risk Desk' },
-  { href: '/agent', label: 'Edge Agent' },
+  { href: '/', label: 'Terminal' },
+  { href: '/agent', label: 'Risk Calculator' },
   { href: '/fan', label: 'Canvas Cup' },
   { href: '/judges', label: 'Judges' },
 ]

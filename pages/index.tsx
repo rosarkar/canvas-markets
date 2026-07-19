@@ -181,7 +181,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Canvas Markets — World Cup Risk Desk</title>
+        <title>Canvas Markets — World Cup Terminal</title>
         <meta name="description" content="Risk-managed World Cup betting copilot. TxLINE StablePrice odds, Kelly sizing, Monte Carlo ruin analysis, Bankr settlement." />
       </Head>
 

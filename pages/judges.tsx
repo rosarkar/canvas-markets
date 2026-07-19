@@ -60,8 +60,8 @@ export default function Judges() {
           <div style={{ ...kicker }}>The three surfaces</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: '2rem' }}>
             {[
-              { href: '/', name: 'Risk Desk', desc: 'Live TxLINE StablePrice board with a Kelly-sizing, ruin-aware copilot.' },
-              { href: '/agent', name: 'Edge Agent', desc: 'An autonomous, risk-limited betting agent — goal-triggered, with a kill switch.' },
+              { href: '/', name: 'Terminal', desc: 'Live TxLINE StablePrice board with a Kelly-sizing, ruin-aware copilot.' },
+              { href: '/agent', name: 'Risk Calculator', desc: 'An autonomous, risk-limited betting agent — goal-triggered, with a kill switch.' },
               { href: '/fan', name: 'Canvas Cup', desc: 'A points prediction game settled with provably-fair, Merkle-anchored results.' },
             ].map(s => (
               <Link key={s.href} href={s.href} style={{ ...card, display: 'block' }}>
@@ -119,7 +119,7 @@ export default function Judges() {
                 {WALLET} ↗
               </a>
               <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 12 }}>
-                On the Risk Desk, the <b style={{ color: 'var(--accent)' }}>on-chain ✓</b> chip links to the day&rsquo;s
+                On the Terminal, the <b style={{ color: 'var(--accent)' }}>on-chain ✓</b> chip links to the day&rsquo;s
                 <code style={{ color: 'var(--text)' }}> daily_scores_merkle_roots</code> account — the exact place the live root anchors.
               </p>
             </div>

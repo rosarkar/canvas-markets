@@ -217,6 +217,27 @@ export async function getPolymarketProbs(
 }
 
 /**
+ * Diagnostics for the `/api/feed-status` route: how many World Cup events Gamma
+ * currently returns and a few of their titles — so "why is the Polymarket
+ * section empty?" can be answered with real data (typically: only tournament
+ * futures exist, no per-match "A vs B" markets yet).
+ */
+export async function polymarketDiagnostics(): Promise<{
+  gammaUrl: string;
+  wcTag: string;
+  eventsFound: number;
+  sampleTitles: string[];
+}> {
+  const events = await fetchWorldCupEvents();
+  return {
+    gammaUrl: GAMMA_BASE,
+    wcTag: WORLD_CUP_TAG,
+    eventsFound: events.length,
+    sampleTitles: events.slice(0, 8).map((e) => e.title ?? "(untitled)"),
+  };
+}
+
+/**
  * Enrich matches in place with Polymarket implied probability and the resulting
  * edge on each 1X2 (Match Result) outcome. Never throws; outcomes without a
  * Polymarket market get `polymarketProb: null` / `polymarketEdge: null`.

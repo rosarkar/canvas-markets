@@ -179,6 +179,11 @@ export default function Judges() {
               Polymarket path settles in <b style={{ color: 'var(--text)' }}>USDC on Polygon — not Solana-native</b>. We say this
               plainly so no one is misled into thinking a bet clears on Solana.
             </p>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 12 }}>
+              Polymarket runs on Polygon. Rather than requiring users to manually bridge funds, the Canvas Agent sends Bankr a
+              natural language prompt — Bankr handles the Solana→Polygon USDC bridge, executes the Polymarket position, and
+              returns funds to the user&rsquo;s Solana wallet on settlement. The user never touches a bridge.
+            </p>
           </div>
 
           {/* Stack */}

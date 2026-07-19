@@ -440,6 +440,10 @@ export default function Home() {
               q: 'How does TxLINE power this?',
               a: 'TxLINE streams cryptographically verified World Cup odds anchored on Solana. We de-margin the consensus line to get true fair probabilities, then compare them against Polymarket’s implied odds to surface edges in mispriced markets in real time.',
             },
+            {
+              q: 'Why Polymarket if this is built on Solana?',
+              a: 'Polymarket runs on Polygon, which has the deepest liquidity for World Cup prediction markets. Rather than asking users to bridge manually, Canvas Agent sends Bankr a single prompt — Bankr bridges Solana USDC to Polygon, executes on Polymarket, and returns winnings to your Solana wallet automatically. TxLINE data stays on Solana. Settlement returns to Solana. Polymarket is just where the liquidity lives.',
+            },
           ].map((f, i) => (
             <details key={i} style={{ borderTop: '1px solid var(--border)' }}>
               <summary style={{

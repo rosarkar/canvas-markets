@@ -56,6 +56,44 @@ export default function Judges() {
             </div>
           </header>
 
+          {/* Hackathon tracks */}
+          <div style={{ ...kicker }}>Hackathon track submissions</div>
+          <div style={{ display: 'grid', gap: 12, marginBottom: '2rem' }}>
+            {[
+              {
+                track: 'Track 1 — Trading Tools & Agents',
+                name: 'Terminal',
+                url: 'https://canvas-markets.vercel.app',
+                body: 'TxLINE powers live StablePrice odds, de-margined to fair probability. We detect edges vs Polymarket implied odds and size positions with Kelly criterion.',
+                endpoints: 'Endpoints used: fixtures, odds (StablePrice), scores.',
+              },
+              {
+                track: 'Track 2 — Consumer & Fan Experiences',
+                name: 'Canvas Cup',
+                url: 'https://canvas-markets.vercel.app/fan',
+                body: 'TxLINE fair odds replace bookmaker-margined odds — payouts scale with how mispriced the outcome was. Real-time leaderboard with Merkle-anchored settlement.',
+                endpoints: '',
+              },
+              {
+                track: 'Track 3 — Prediction Markets & Settlement',
+                name: 'Risk Calculator',
+                url: 'https://canvas-markets.vercel.app/agent',
+                body: 'Autonomous agent reads TxLINE odds, applies Kelly sizing with configurable ruin limits, executes via Bankr cross-chain to Polymarket on Solana→Polygon.',
+                endpoints: '',
+              },
+            ].map(t => (
+              <div key={t.track} style={{ border: '1px solid var(--border)', padding: 18 }}>
+                <div style={{ ...kicker, marginBottom: 6 }}>{t.track}</div>
+                <a href={t.url} target="_blank" rel="noreferrer" style={{ fontSize: 17, fontWeight: 600 }}>
+                  {t.name} <span style={{ color: 'var(--accent)' }}>↗</span>
+                </a>
+                <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 2, marginBottom: 10, wordBreak: 'break-all' }}>{t.url}</div>
+                <p style={{ fontSize: 13, color: 'var(--muted)' }}>{t.body}</p>
+                {t.endpoints && <p style={{ fontSize: 13, color: 'var(--text)', marginTop: 8 }}>{t.endpoints}</p>}
+              </div>
+            ))}
+          </div>
+
           {/* The three surfaces */}
           <div style={{ ...kicker }}>The three surfaces</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: '2rem' }}>
@@ -149,6 +187,21 @@ export default function Judges() {
             {['Next.js · Vercel', 'Express backends · Railway', 'TxLINE · Solana', 'Bankr Agent API', 'Kimi (Moonshot) copilot', 'Merkle proofs'].map(t => (
               <span key={t} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 20, border: '0.5px solid var(--border)', color: 'var(--muted)', background: 'var(--surface)' }}>{t}</span>
             ))}
+          </div>
+
+          {/* Submission details */}
+          <div style={{ border: '1px solid var(--border)', padding: 18, marginBottom: '2rem' }}>
+            <div style={{ ...kicker, marginBottom: 10 }}>Submission details</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div>Public repo: <a href="https://github.com/rosarkar/canvas-markets" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>github.com/rosarkar/canvas-markets ↗</a></div>
+              <div>Deployed URL: <a href="https://canvas-markets.vercel.app" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>canvas-markets.vercel.app ↗</a></div>
+              <div>Team: <b style={{ color: 'var(--text)' }}>Rohit Sarkar</b> and <b style={{ color: 'var(--text)' }}>Alexander Vicol</b></div>
+            </div>
+            <div style={{ ...kicker, marginTop: 16, marginBottom: 8 }}>TxLINE API feedback</div>
+            <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+              StablePrice de-margining is the killer feature — having a cryptographically verifiable fair probability is what makes edge detection meaningful.
+              Friction: devnet IDL file not bundled in <code style={{ color: 'var(--text)' }}>dist</code> required a manual Dockerfile fix.
+            </p>
           </div>
 
           <div style={{ fontSize: 12, color: 'var(--muted-2)', textAlign: 'center', paddingBottom: '2rem' }}>

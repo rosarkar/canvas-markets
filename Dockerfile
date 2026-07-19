@@ -6,6 +6,8 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
+# Runtime IDL JSON isn't emitted by tsc — copy it into dist so TxLINE can load it.
+COPY src/services/txline/idl ./dist/services/txline/idl
 
 FROM node:22-alpine AS production
 WORKDIR /app

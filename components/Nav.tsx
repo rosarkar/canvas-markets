@@ -6,7 +6,7 @@ const LINKS = [
   { href: '/', label: 'Terminal' },
   { href: '/agent', label: 'Risk Calculator' },
   { href: '/fan', label: 'Canvas Cup' },
-  { href: '/judges', label: 'Judges' },
+  { href: '/judges', label: 'For Judges' },
 ]
 
 export default function Nav() {

@@ -218,7 +218,7 @@ export default function Home() {
         <Nav />
         <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-            Risk-managed World Cup copilot — TxLINE StablePrice, Kelly sizing, Bankr settlement
+            Live World Cup odds, Kelly-sized positions, onchain settlement.
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
@@ -414,9 +414,52 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        <section style={{ marginTop: '2.5rem' }}>
+          {[
+            {
+              q: 'What is Canvas Markets?',
+              a: 'A trading terminal for the World Cup final. It pulls live odds from TxLINE StablePrice, calculates your Kelly-optimal stake size, and lets you settle bets onchain via Bankr.',
+            },
+            {
+              q: 'Where does the data come from?',
+              a: 'Odds are sourced live from TxLINE StablePrice, cryptographically anchored on Solana. Fair probabilities are de-margined from the consensus line.',
+            },
+            {
+              q: 'What is the edge percentage?',
+              a: 'Edge = (fair probability × decimal odds) − 1. Positive edge means the market is underpricing the outcome relative to TxLINE’s consensus.',
+            },
+          ].map((f, i) => (
+            <details key={i} style={{ borderTop: '1px solid var(--border)' }}>
+              <summary style={{
+                fontSize: 13, color: 'var(--text)', padding: '12px 2px',
+                cursor: 'pointer', listStyle: 'none', userSelect: 'none',
+              }}>
+                {f.q}
+              </summary>
+              <div style={{ fontSize: 13, color: 'var(--muted)', padding: '0 2px 12px', maxWidth: 640, lineHeight: 1.5 }}>
+                {f.a}
+              </div>
+            </details>
+          ))}
+        </section>
+
+        <footer style={{
+          marginTop: '2.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem',
+          textAlign: 'center', fontSize: 11, color: 'var(--muted)',
+        }}>
+          Made with love by{' '}
+          <a href="https://x.com/_rosark" target="_blank" rel="noreferrer" style={{ color: 'var(--muted)', textDecoration: 'underline' }}>Rohit Sarkar</a>
+          {' '}and{' '}
+          <a href="https://x.com/alexvicol" target="_blank" rel="noreferrer" style={{ color: 'var(--muted)', textDecoration: 'underline' }}>Alexander Vicol</a>
+          {' · '}
+          <a href="https://github.com/rosarkar/canvas-markets" target="_blank" rel="noreferrer" style={{ color: 'var(--muted)', textDecoration: 'underline' }}>GitHub</a>
+        </footer>
       </div>
 
       <style>{`
+        summary::-webkit-details-marker { display: none; }
+        details[open] summary { color: var(--text); }
         @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
         button:hover { opacity: .8; }
         input:focus { outline: none; border-color: var(--text) !important; }

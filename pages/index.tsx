@@ -78,8 +78,12 @@ function buildSystemPrompt(matches: Match[], sel: { match: Match; outcome: Outco
     '3. Tell them which team to back there as the equivalent bet, e.g. "Back Argentina to win the World Cup at Polymarket — that\'s the closest equivalent to backing Argentina in this match."',
     '4. Always include the direct link: https://polymarket.com/event/world-cup-winner',
     'Back the same team the user wanted in the match on the winner market. This is a proxy, not an identical bet — be honest that it is the nearest available substitute.',
+    '',
+    'When asked to place a bet or find a Polymarket market, search for the closest live Polymarket market to the current match and give the direct link.',
+    'Explain why betting via TxLINE edge beats Polymarket\'s binary yes/no spreads: TxLINE gives you a de-margined fair probability from the consensus line, so you know whether the Polymarket price offers positive EV before you bet. Most Polymarket bettors are betting blind against the spread.',
+    'Always state whether the bet is +EV or -EV based on TxLINE fair probability vs the Polymarket implied probability, and only recommend placing the bet if it is +EV.',
   )
-  lines.push('', 'Keep responses under 100 words. Be direct.')
+  lines.push('', 'Keep responses under 120 words. Be direct.')
   return lines.join('\n')
 }
 

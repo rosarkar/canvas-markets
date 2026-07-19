@@ -7,7 +7,7 @@ import { enrichMatches, SAMPLE_MATCHES, kelly, type Match, type Outcome } from '
 const SAMPLE = enrichMatches(SAMPLE_MATCHES)
 
 // --- Live TxLINE feed (GET /api/markets → Railway → on-chain Solana data) ---
-interface ApiOutcome { key: string; label: string; fairProb: number; decimalOdds: number; edge: number }
+interface ApiOutcome { key: string; label: string; fairProb: number; decimalOdds: number; edge: number; polymarketProb?: number | null; polymarketEdge?: number | null }
 interface ApiMarket { key: string; label: string; outcomes: ApiOutcome[] }
 interface ApiMatch { id: string; competition?: string; stage?: string; home: string; away: string; status?: Match['status']; markets: ApiMarket[] }
 interface Provenance { onChain?: boolean; rootExplorerUrl?: string; network?: string }
@@ -26,6 +26,8 @@ function liveMatchesFrom(apiMatches: ApiMatch[]): Match[] {
           market: Number(o.decimalOdds) || 0,
           fairProb: Number(o.fairProb) || 0,
           edge: Number(o.edge) || 0,
+          polymarketProb: o.polymarketProb == null ? null : Number(o.polymarketProb),
+          polymarketEdge: o.polymarketEdge == null ? null : Number(o.polymarketEdge),
         }))
       : []
     return {
@@ -71,15 +73,24 @@ function buildSystemPrompt(matches: Match[], sel: { match: Match; outcome: Outco
   return lines.join('\n')
 }
 
-/** The single highest-edge outcome across the whole board, for the Top pick bar. */
+/** The top pick for the bar. If any outcome is underpriced on Polymarket
+ *  (positive polymarketEdge), pick the largest gap; otherwise fall back to the
+ *  single highest raw edge across the board. */
 function topPickFrom(matches: Match[]): { match: Match; outcome: Outcome } | null {
-  let best: { match: Match; outcome: Outcome } | null = null
+  let bestGap: { match: Match; outcome: Outcome } | null = null
+  let bestEdge: { match: Match; outcome: Outcome } | null = null
   matches.forEach(m => {
     [...m.outcomes, ...m.ou].forEach(o => {
-      if (!best || (o.edge ?? -Infinity) > (best.outcome.edge ?? -Infinity)) best = { match: m, outcome: o }
+      const gap = o.polymarketEdge
+      if (gap != null && gap > 0 && (!bestGap || gap > (bestGap.outcome.polymarketEdge ?? -Infinity))) {
+        bestGap = { match: m, outcome: o }
+      }
+      if (!bestEdge || (o.edge ?? -Infinity) > (bestEdge.outcome.edge ?? -Infinity)) {
+        bestEdge = { match: m, outcome: o }
+      }
     })
   })
-  return best
+  return bestGap ?? bestEdge
 }
 
 /** A short, natural analysis prompt for a given outcome. */
@@ -170,6 +181,7 @@ export default function Home() {
 
   const chips = [
     'Best edge right now?',
+    "What's mispriced on Polymarket?",
     `Size my bankroll at $${bankroll}`,
     'How do I hedge this?',
     'Explain Kelly sizing',
@@ -177,6 +189,13 @@ export default function Home() {
   ]
 
   const top = topPickFrom(matches)
+
+  // Top 3 outcomes TxLINE rates as underpriced on Polymarket (largest positive gap).
+  const mispriced = matches
+    .flatMap(m => m.outcomes.map(o => ({ match: m, outcome: o })))
+    .filter(x => x.outcome.polymarketEdge != null && x.outcome.polymarketEdge > 0)
+    .sort((a, b) => (b.outcome.polymarketEdge as number) - (a.outcome.polymarketEdge as number))
+    .slice(0, 3)
 
   return (
     <>
@@ -240,6 +259,36 @@ export default function Home() {
                 }}>
                   Analyse →
                 </button>
+              </div>
+            )}
+
+            {mispriced.length > 0 && (
+              <div style={{ border: '1px solid var(--border)', marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                  Mispriced on Polymarket
+                </div>
+                {mispriced.map(({ match: m, outcome: o }, i) => (
+                  <div key={`${m.id}-${o.key}`} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
+                    borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.home} vs {m.away}</div>
+                    </div>
+                    <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--green)' }}>
+                      +{((o.polymarketEdge ?? 0) * 100).toFixed(1)}%
+                    </span>
+                    <a
+                      href={`https://polymarket.com/markets?_q=${encodeURIComponent(`${m.home} ${m.away}`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 13, fontWeight: 500, padding: '5px 12px', border: '1px solid var(--border)', color: 'var(--text)', whiteSpace: 'nowrap' }}
+                    >
+                      Bet →
+                    </a>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -389,6 +438,16 @@ function OutcomeCell({ m, o, selected, onPick }: {
         {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
       </div>
       <div style={{ fontSize: 11, color: isSel ? 'var(--bg)' : 'var(--muted-2)', opacity: isSel ? .7 : 1 }}>{o.market.toFixed(2)} odds</div>
+      {o.polymarketProb != null && (
+        <>
+          <div style={{ fontSize: 10, color: isSel ? 'var(--bg)' : 'var(--muted-2)', opacity: isSel ? .7 : 1 }}>
+            Poly {(o.polymarketProb * 100).toFixed(0)}%
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: (o.polymarketEdge ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            Gap {(o.polymarketEdge ?? 0) >= 0 ? '+' : ''}{((o.polymarketEdge ?? 0) * 100).toFixed(1)}%
+          </div>
+        </>
+      )}
     </button>
   )
 }

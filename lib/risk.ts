@@ -24,6 +24,10 @@ export interface Outcome {
   market: number
   fairProb?: number
   edge?: number
+  /** Polymarket implied probability for this outcome, or null if no market. */
+  polymarketProb?: number | null
+  /** fairProb − polymarketProb: positive means underpriced on Polymarket. */
+  polymarketEdge?: number | null
 }
 
 export interface Match {

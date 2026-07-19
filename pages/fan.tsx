@@ -53,7 +53,7 @@ const card: React.CSSProperties = { background: 'var(--surface)', border: '1px s
 // Secondary button: white fill, black border, black text.
 const btn: React.CSSProperties = { fontSize: 12, padding: '6px 14px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }
 // Primary action: black fill, white text.
-const btnFill: React.CSSProperties = { ...btn, background: '#000', color: '#fff', border: '1px solid #000' }
+const btnFill: React.CSSProperties = { ...btn, background: 'var(--text)', color: 'var(--bg)', border: '1px solid var(--text)' }
 const inp: React.CSSProperties = { fontSize: 13, background: 'var(--surface)', border: '1px solid var(--border)', padding: '8px 10px', color: 'var(--text)' }
 const cell: React.CSSProperties = { padding: '6px 8px', fontSize: 12, borderBottom: '1px solid var(--border)', textAlign: 'left' }
 const th: React.CSSProperties = { ...cell, color: 'var(--muted)', fontSize: 11 }
@@ -312,7 +312,7 @@ export default function FanPage() {
           Points game · settlement provably fair · not financial advice
         </div>
       </div>
-      <style>{`button:hover:not(:disabled) { opacity: .8; } input:focus { outline: none; border-color: #000 !important; }`}</style>
+      <style>{`button:hover:not(:disabled) { opacity: .8; } input:focus { outline: none; border-color: var(--text) !important; }`}</style>
     </>
   )
 }

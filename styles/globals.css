@@ -1,4 +1,5 @@
 :root {
+  /* Light mode (default) — white background, black text. */
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-2: #ffffff;
@@ -15,21 +16,21 @@
   --serif: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
-/* Editorial black & white — single theme. The light-mode toggle is a no-op:
-   the palette is already pure white/black in both states. */
-html[data-theme="light"] {
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-2: #ffffff;
-  --border: #000000;
-  --text: #000000;
-  --muted: #555555;
-  --muted-2: #777777;
-  --accent: #000000;
-  --accent-bg: #f4f4f4;
+/* Dark mode — the exact inverse: black background, white text. Green and red
+   stay identical in both themes so positive/negative always read the same. */
+html[data-theme="dark"] {
+  --bg: #000000;
+  --surface: #000000;
+  --surface-2: #000000;
+  --border: #ffffff;
+  --text: #ffffff;
+  --muted: #aaaaaa;
+  --muted-2: #888888;
+  --accent: #ffffff;
+  --accent-bg: #1a1a1a;
   --green: #16a34a;
   --red: #dc2626;
-  --blue: #000000;
+  --blue: #ffffff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,7 +39,7 @@ html[data-theme="light"] {
 * { border-radius: 0 !important; }
 
 html { color-scheme: light; }
-html[data-theme="light"] { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
 
 body {
   background: var(--bg);

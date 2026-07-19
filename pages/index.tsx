@@ -222,9 +222,9 @@ export default function Home() {
             {top && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14,
-                background: '#000', color: '#fff', border: '1px solid #000', padding: '12px 16px',
+                background: 'var(--text)', color: 'var(--bg)', border: '1px solid var(--text)', padding: '12px 16px',
               }}>
-                <span style={{ fontSize: 11, color: '#bbb', letterSpacing: '.02em' }}>Top pick</span>
+                <span style={{ fontSize: 11, color: 'var(--bg)', opacity: .7, letterSpacing: '.02em' }}>Top pick</span>
                 <span style={{ fontSize: 14, fontWeight: 500 }}>
                   {top.outcome.label} — {top.match.home} vs {top.match.away}
                 </span>
@@ -236,7 +236,7 @@ export default function Home() {
                 </span>
                 <button onClick={() => analyse(top.match, top.outcome)} style={{
                   marginLeft: 'auto', fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                  background: '#fff', color: '#000', border: '1px solid #fff', padding: '6px 14px',
+                  background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--bg)', padding: '6px 14px',
                 }}>
                   Analyse →
                 </button>
@@ -286,7 +286,7 @@ export default function Home() {
 
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', position: 'sticky', top: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: '#000' }}>Agent</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Agent</span>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>bankroll</span>
                 <input
@@ -348,7 +348,7 @@ export default function Home() {
               />
               <button onClick={() => send()} disabled={loading} style={{
                 padding: '8px 16px', border: '1px solid var(--border)',
-                background: '#000', color: '#fff', fontSize: 13, cursor: 'pointer',
+                background: 'var(--text)', color: 'var(--bg)', fontSize: 13, cursor: 'pointer',
               }}>
                 Send
               </button>
@@ -360,7 +360,7 @@ export default function Home() {
       <style>{`
         @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
         button:hover { opacity: .8; }
-        input:focus { outline: none; border-color: #000 !important; }
+        input:focus { outline: none; border-color: var(--text) !important; }
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); }
       `}</style>
     </>
@@ -377,18 +377,18 @@ function OutcomeCell({ m, o, selected, onPick }: {
 }) {
   const isSel = selected?.outcome.key === o.key && selected?.match.id === m.id
   const isPos = (o.edge ?? 0) > 0
-  const edgeColor = isSel ? (isPos ? '#4ade80' : '#f87171') : (isPos ? 'var(--green)' : 'var(--red)')
+  const edgeColor = isPos ? 'var(--green)' : 'var(--red)'
   return (
     <button onClick={() => onPick(m, o)} style={{
       border: '1px solid var(--border)', padding: '8px 4px', textAlign: 'center', cursor: 'pointer',
-      background: isSel ? '#000' : 'var(--surface)', color: isSel ? '#fff' : 'var(--text)',
+      background: isSel ? 'var(--text)' : 'var(--surface)', color: isSel ? 'var(--bg)' : 'var(--text)',
       display: 'flex', flexDirection: 'column', gap: 3,
     }}>
-      <div style={{ fontSize: 11, color: isSel ? '#bbb' : 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</div>
+      <div style={{ fontSize: 11, color: isSel ? 'var(--bg)' : 'var(--muted)', opacity: isSel ? .7 : 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</div>
       <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: edgeColor }}>
         {isPos ? '+' : ''}{((o.edge ?? 0) * 100).toFixed(1)}%
       </div>
-      <div style={{ fontSize: 11, color: isSel ? '#bbb' : 'var(--muted-2)' }}>{o.market.toFixed(2)} odds</div>
+      <div style={{ fontSize: 11, color: isSel ? 'var(--bg)' : 'var(--muted-2)', opacity: isSel ? .7 : 1 }}>{o.market.toFixed(2)} odds</div>
     </button>
   )
 }

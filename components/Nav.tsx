@@ -11,11 +11,14 @@ const LINKS = [
 
 export default function Nav() {
   const router = useRouter()
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [theme, setTheme] = useState<'dark' | 'light'>('light')
 
   useEffect(() => {
     try {
-      if (localStorage.getItem('canvas-theme') === 'light') setTheme('light')
+      if (localStorage.getItem('canvas-theme') === 'dark') {
+        setTheme('dark')
+        document.documentElement.setAttribute('data-theme', 'dark')
+      }
     } catch { /* ignore */ }
   }, [])
 
@@ -23,7 +26,7 @@ export default function Nav() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
     try { localStorage.setItem('canvas-theme', next) } catch { /* ignore */ }
-    if (next === 'light') document.documentElement.setAttribute('data-theme', 'light')
+    if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
     else document.documentElement.removeAttribute('data-theme')
   }
 

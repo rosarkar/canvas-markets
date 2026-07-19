@@ -62,7 +62,7 @@ const card: React.CSSProperties = { background: 'var(--surface)', border: '1px s
 // Secondary button: white fill, black border, black text.
 const btn: React.CSSProperties = { fontSize: 12, padding: '6px 14px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }
 // Primary action: black fill, white text.
-const btnFill: React.CSSProperties = { ...btn, background: '#000', color: '#fff', border: '1px solid #000' }
+const btnFill: React.CSSProperties = { ...btn, background: 'var(--text)', color: 'var(--bg)', border: '1px solid var(--text)' }
 // Kill switch: red fill, white text.
 const btnKill: React.CSSProperties = { ...btn, background: '#dc2626', color: '#fff', border: '1px solid #dc2626' }
 const inp: React.CSSProperties = { fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', padding: '4px 8px', color: 'var(--text)', width: 80 }
@@ -302,7 +302,7 @@ export default function AgentPage() {
           Not financial advice · settlement simulated
         </div>
       </div>
-      <style>{`button:hover { opacity: .8; } input:focus, select:focus { outline: none; border-color: #000 !important; }`}</style>
+      <style>{`button:hover { opacity: .8; } input:focus, select:focus { outline: none; border-color: var(--text) !important; }`}</style>
     </>
   )
 }

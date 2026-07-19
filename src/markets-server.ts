@@ -23,6 +23,7 @@ const express = (await import("express")).default;
 const path = await import("node:path");
 const { fileURLToPath } = await import("node:url");
 const { marketsRouter } = await import("./api/markets.js");
+const { feedStatusRouter } = await import("./api/feed-status.js");
 const { logger } = await import("./utils/logger.js");
 
 const app = express();
@@ -31,6 +32,7 @@ app.use(express.json());
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 app.use("/markets", express.static(path.join(repoRoot, "public/markets")));
 app.use(marketsRouter);
+app.use(feedStatusRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "canvas-markets" });

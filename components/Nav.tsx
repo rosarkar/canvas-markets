@@ -48,6 +48,16 @@ export default function Nav() {
           </Link>
         )
       })}
+      <a
+        href={`https://bankr.bot?prompt=${encodeURIComponent('Connect my wallet to Canvas Markets')}`}
+        target="_blank" rel="noreferrer"
+        style={{
+          marginLeft: 'auto', fontSize: 13, padding: '5px 12px', borderRadius: 20,
+          border: '0.5px solid var(--border)', color: 'var(--muted)', background: 'transparent', textDecoration: 'none',
+        }}
+      >
+        Connect Wallet
+      </a>
       <button
         onClick={toggle}
         aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}

@@ -53,7 +53,7 @@ export default function Nav() {
         target="_blank" rel="noreferrer"
         style={{
           marginLeft: 'auto', fontSize: 13, padding: '5px 12px', borderRadius: 20,
-          border: '0.5px solid var(--border)', color: 'var(--muted)', background: 'transparent', textDecoration: 'none',
+          border: '0.5px solid var(--text)', color: 'var(--bg)', background: 'var(--text)', textDecoration: 'none',
         }}
       >
         Bet onchain with Bankr

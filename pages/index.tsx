@@ -225,7 +225,7 @@ export default function Home() {
         </div>
         <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-            Live World Cup odds, Kelly-sized positions, onchain settlement.
+            Live World Cup odds via TxLINE StablePrice — find mispriced markets, size positions with Kelly, settle onchain with Bankr.
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
@@ -352,7 +352,7 @@ export default function Home() {
 
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', position: 'sticky', top: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Agent</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Canvas Agent</span>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>bankroll</span>
                 <input
@@ -435,6 +435,10 @@ export default function Home() {
             {
               q: 'What is the edge percentage?',
               a: 'Edge = (fair probability × decimal odds) − 1. Positive edge means the market is underpricing the outcome relative to TxLINE’s consensus.',
+            },
+            {
+              q: 'How does TxLINE power this?',
+              a: 'TxLINE streams cryptographically verified World Cup odds anchored on Solana. We de-margin the consensus line to get true fair probabilities, then compare them against Polymarket’s implied odds to surface edges in mispriced markets in real time.',
             },
           ].map((f, i) => (
             <details key={i} style={{ borderTop: '1px solid var(--border)' }}>

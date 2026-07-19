@@ -158,7 +158,7 @@ export default function FanPage() {
         <Nav />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Points prediction game — provably-fair, Merkle-anchored settlement</span>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Predict World Cup outcomes with TxLINE fair odds — points scale with edge, settlement is provably fair.</span>
           <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
             marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', textDecoration: 'none',
             color: 'var(--text)', border: '1px solid var(--border)',
@@ -219,6 +219,9 @@ export default function FanPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 12, alignItems: 'start' }}>
           <div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+              Odds shown are TxLINE StablePrice fair probabilities — no bookmaker margin. Pick correctly and your payout scales with how mispriced the outcome was.
+            </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
               Match board {joined ? '— tap an outcome to predict' : '— join to play'}
             </div>

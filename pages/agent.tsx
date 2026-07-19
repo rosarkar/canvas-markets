@@ -150,7 +150,7 @@ export default function AgentPage() {
         <Nav />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Autonomous risk-limited betting agent — TxLINE StablePrice, Kelly-sized, kill switch</span>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Autonomous betting agent powered by TxLINE — Kelly sizing, ruin limits, onchain execution.</span>
           <Link href="/judges" title="What's real vs simulated — verify on-chain" style={{
             marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', textDecoration: 'none',
             color: 'var(--text)', border: '1px solid var(--border)',
@@ -199,6 +199,10 @@ export default function AgentPage() {
               <div style={{ fontSize: 22, fontWeight: 600, color: s.color ?? 'var(--text)' }}>{s.value}</div>
             </div>
           ))}
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+          Set your risk limits. The agent reads live TxLINE odds, sizes each bet with Kelly criterion, and executes via Bankr when edge exceeds your minimum threshold.
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 12, alignItems: 'start' }}>
